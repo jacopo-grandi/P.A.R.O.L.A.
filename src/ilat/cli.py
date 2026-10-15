@@ -5,10 +5,12 @@ ilat validate <transcript.json>     check a reference against docs/conventions.m
 ilat annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 ilat annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
 ilat manifest check <file.jsonl>    validate a dataset manifest
+ilat eval [--systems a,b]           run ASR systems on the test set and write a report
 """
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -17,6 +19,8 @@ from ilat import __version__
 from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
 from ilat.asr import DEFAULT_MODEL, MLXWhisperBackend
 from ilat.audio import FFmpegError
+from ilat.eval.report import run_system, score_system, write_report
+from ilat.eval.systems import SYSTEMS
 from ilat.manifest import check_manifest
 from ilat.pipeline import transcribe_file
 from ilat.schema import Transcript
@@ -71,6 +75,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("file", type=Path)
     c.add_argument("--root", type=Path, default=Path("."), help="repository root (default: .)")
     c.add_argument("--files", action="store_true", help="also open audio and reference files")
+
+    e = sub.add_parser("eval", help="run ASR systems on the test set and write a report")
+    e.add_argument(
+        "--systems",
+        default=",".join(SYSTEMS),
+        help=f"comma-separated systems (default: all of {', '.join(SYSTEMS)})",
+    )
+    e.add_argument("--manifest", type=Path, default=Path("data/manifests/test.jsonl"))
+    e.add_argument("--root", type=Path, default=Path("."), help="repository root (default: .)")
+    e.add_argument("--hyp-dir", type=Path, default=Path("data/private/hyp"))
+    e.add_argument("--out", type=Path, default=None, help="default: results/<date>-baseline")
+    e.add_argument("--force", action="store_true", help="re-run cached transcriptions")
     return parser
 
 
@@ -151,6 +167,34 @@ def cmd_manifest_check(args) -> int:
     return 1 if report.errors else 0
 
 
+def cmd_eval(args) -> int:
+    names = [n.strip() for n in args.systems.split(",") if n.strip()]
+    unknown = [n for n in names if n not in SYSTEMS]
+    if unknown:
+        print(f"error: unknown systems {unknown}; known: {list(SYSTEMS)}", file=sys.stderr)
+        return 1
+    report = check_manifest(args.manifest, args.root, check_files=True)
+    if report.errors:
+        for e in report.errors:
+            print(f"error: {e}", file=sys.stderr)
+        return 1
+    records = [r for r in report.records if r.reference is not None]
+    if not records:
+        print("error: no references in the manifest", file=sys.stderr)
+        return 1
+    systems = [SYSTEMS[n] for n in names]
+    rows = []
+    for system in systems:
+        print(f"[{system.name}] transcribing {len(records)} files (cached ones are skipped)")
+        timing = run_system(system, records, args.root, args.hyp_dir, force=args.force)
+        rows += score_system(system, records, args.root, args.hyp_dir, timing)
+    out = args.out or Path("results") / f"{date.today().isoformat()}-baseline"
+    md, csv_path = write_report(rows, systems, records, out)
+    print(f"wrote {md}")
+    print(f"wrote {csv_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
@@ -159,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,
         ("manifest", "check"): cmd_manifest_check,
+        ("eval", None): cmd_eval,
     }
     try:
         return handlers[(args.command, getattr(args, "action", None))](args)

@@ -65,8 +65,9 @@ def _merge_words(raw_words: list[dict[str, Any]]) -> list[Word]:
 class MLXWhisperBackend:
     name = "mlx-whisper"
 
-    def __init__(self, model: str = DEFAULT_MODEL) -> None:
+    def __init__(self, model: str = DEFAULT_MODEL, initial_prompt: str | None = None) -> None:
         self.model = model
+        self.initial_prompt = initial_prompt
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
         import mlx_whisper
@@ -78,5 +79,6 @@ class MLXWhisperBackend:
             path_or_hf_repo=self.model,
             language=language,
             word_timestamps=True,
+            initial_prompt=self.initial_prompt,
         )
         return convert_result(result)
