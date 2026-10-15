@@ -1,0 +1,52 @@
+# --- Data: never commit audio or personal data -------------------------------
+# Everything under data/ is ignored except versioned manifests.
+data/*
+!data/manifests/
+data/manifests/*
+!data/manifests/*.jsonl
+!data/manifests/.gitkeep
+
+# Audio and video files, anywhere in the repo.
+*.wav
+*.wave
+*.mp3
+*.m4a
+*.mp4
+*.m4v
+*.mov
+*.mkv
+*.webm
+*.avi
+*.flac
+*.ogg
+*.oga
+*.opus
+*.aac
+*.aif
+*.aiff
+*.caf
+*.wma
+*.amr
+*.3gp
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# --- Model weights and caches ------------------------------------------------
+*.safetensors
+*.npz
+*.bin
+*.gguf
+mlx_models/
+
+# --- OS / editors ------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
