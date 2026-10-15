@@ -48,6 +48,10 @@ FILLER_FORMS = {
 CLASSIC_DROPPED_TAGS = {"filler", "truncated", "repetition", "reduplication", "false_start",
                         "edit_term"}  # fmt: skip
 
+# Spelling variants that docs/conventions.md §2.9 treats as the same word.
+SPELLINGS = {"okay": "ok", "o.k": "ok", "perchè": "perché", "poichè": "poiché",
+             "vabbe'": "vabbè", "vabbé": "vabbè"}  # fmt: skip
+
 _STRIP = '.,;:!?…"“”«»()[]{}'
 _ELISION = re.compile(r"(?<=\w')(?=\w)")
 _THOUSANDS_SEP = {"it": ".", "en": ","}
@@ -100,6 +104,7 @@ def split_word(text: str, lang: str) -> list[str]:
     t = text.replace("\u2019", "'").lower().strip(_STRIP)
     if not t:
         return []
+    t = SPELLINGS.get(t, t)
     out = []
     for part in _ELISION.split(t):
         part = part.strip(_STRIP)

@@ -43,6 +43,17 @@ uv run ilat validate call.ref.json           # check a reference against the con
 uv run ilat manifest check data/manifests/test.jsonl --files
 ```
 
+### Evaluating ASR systems
+
+```bash
+uv run ilat eval                                  # all systems, references in the manifest
+uv sync --group baselines                         # optional: Parakeet v3 and CrisperWhisper 2.0
+uv run --group baselines ilat eval --systems parakeet-v3,crisper-turbo-lang
+```
+
+Reports go to `results/` (markdown + csv); hypotheses are cached in `data/private/hyp/`.
+CrisperWhisper weights are under a non-commercial research license: evaluation only.
+
 Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:
 [`docs/annotation.md`](docs/annotation.md) (both in Italian).
 

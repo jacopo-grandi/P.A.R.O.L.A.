@@ -1,6 +1,6 @@
 # Baseline — 2026-10-15
 
-Commit `90a7523`. Generato da `ilat eval`. Valori in %, tra parentesi l'intervallo di confidenza al 95% (bootstrap sui segmenti).
+Commit `6147475`. Generato da `ilat eval`. Valori in %, tra parentesi l'intervallo di confidenza al 95% (bootstrap sui segmenti).
 
 **Riferimenti** (2 file, 0.76 h): it-002 (it, 17 min, silver), en-002 (en, 29 min, silver).
 
@@ -13,16 +13,16 @@ Commit `90a7523`. Generato da `ilat eval`. Valori in %, tra parentesi l'interval
 
 | Sistema | Ambito | WER letterale | WER classico | WER verbatim | Filler recall | Filler precision | RTF |
 |---|---|---|---|---|---|---|---|
-| `turbo` | all | 4.9 [3.2-7.0] | 4.6 [3.0-6.6] | 9.4 [7.7-11.4] | 13.9 | 87.5 | 0.048 |
-| `turbo` | lang:en | 6.8 [4.0-10.3] | 6.2 [3.6-9.6] | 13.0 [10.4-16.1] | 15.4 | 87.0 | 0.049 |
+| `turbo` | all | 4.8 [3.1-6.9] | 4.4 [2.9-6.5] | 9.3 [7.6-11.3] | 13.9 | 87.5 | 0.048 |
+| `turbo` | lang:en | 6.6 [3.9-10.1] | 6.0 [3.4-9.4] | 12.8 [10.3-15.9] | 15.4 | 87.0 | 0.049 |
 | `turbo` | lang:it | 2.0 [1.2-2.9] | 2.0 [1.2-2.9] | 3.7 [2.8-4.8] | 4.3 | 100.0 | 0.046 |
 | `turbo` | it-002 | 2.0 [1.2-2.9] | 2.0 [1.2-2.9] | 3.7 [2.8-4.8] | 4.3 | 100.0 | 0.046 |
-| `turbo` | en-002 | 6.8 [4.0-10.3] | 6.2 [3.6-9.6] | 13.0 [10.4-16.1] | 15.4 | 87.0 | 0.049 |
-| `turbo-prompt` | all | 6.1 [5.0-7.3] | 5.5 [4.5-6.6] | 11.1 [10.0-12.2] | 2.3 | 80.0 | 0.050 |
-| `turbo-prompt` | lang:en | 4.9 [3.7-6.5] | 4.7 [3.6-6.0] | 12.2 [10.8-13.9] | 0.0 | — | 0.053 |
+| `turbo` | en-002 | 6.6 [3.9-10.1] | 6.0 [3.4-9.4] | 12.8 [10.3-15.9] | 15.4 | 87.0 | 0.049 |
+| `turbo-prompt` | all | 6.0 [4.9-7.2] | 5.4 [4.4-6.5] | 11.0 [9.9-12.2] | 2.3 | 80.0 | 0.050 |
+| `turbo-prompt` | lang:en | 4.7 [3.5-6.3] | 4.5 [3.4-5.9] | 12.1 [10.7-13.8] | 0.0 | — | 0.053 |
 | `turbo-prompt` | lang:it | 7.8 [6.2-9.7] | 6.8 [5.2-8.6] | 9.2 [7.6-11.0] | 17.0 | 80.0 | 0.046 |
 | `turbo-prompt` | it-002 | 7.8 [6.2-9.7] | 6.8 [5.2-8.6] | 9.2 [7.6-11.0] | 17.0 | 80.0 | 0.046 |
-| `turbo-prompt` | en-002 | 4.9 [3.7-6.5] | 4.7 [3.6-6.0] | 12.2 [10.8-13.9] | 0.0 | — | 0.053 |
+| `turbo-prompt` | en-002 | 4.7 [3.5-6.3] | 4.5 [3.4-5.9] | 12.1 [10.7-13.8] | 0.0 | — | 0.053 |
 
 ## Disfluenze conservate (tutti i file)
 

@@ -4,13 +4,15 @@ Riferimenti: it-002 (16 min) ed en-002 (29 min), entrambi `silver`. Report compl
 
 ## WER letterale (metrica principale) al variare del seme
 
+I semi 0–2 sono calcolati con la normalizzazione finale (`okay` = `ok`); la colonna "senza seme" con quella precedente.
+
 | Sistema | Lingua | senza seme | seme 0 | seme 1 | seme 2 |
 |---|---|---|---|---|---|
 | `turbo` | it | 2,0 | 2,0 | 2,0 | 2,0 |
-| `turbo` | en | 3,2 | 4,7 | 4,9 | 6,8 |
+| `turbo` | en | 3,2 | 4,5 | 4,7 | 6,6 |
 | `turbo-prompt` | it | 7,8 | 7,8 | 7,8 | 7,8 |
-| `turbo-prompt` | en | 3,2 | 5,8 | 3,5 | 4,9 |
-| `large-v3-lang` | tutte | 19,1 | 25,5 | — | — |
+| `turbo-prompt` | en | 3,2 | 5,6 | 3,4 | 4,7 |
+| `large-v3-lang` | tutte | 19,1 | 25,4 | — | — |
 
 ## Cosa dicono i numeri
 
@@ -28,8 +30,20 @@ Riferimenti: it-002 (16 min) ed en-002 (29 min), entrambi `silver`. Report compl
 - **Esitazioni dei riferimenti** proposte in gran parte da turbo con varie finestre e prompt e verificate a campione: la filler recall è ottimistica per le varianti di turbo.
 - Su en-002 la ripetizione finale "Bye-bye" del riferimento potrebbe essere un loop di Whisper confermato nella revisione.
 
+## Parakeet v3 e CrisperWhisper 2.0 turbo (seme 0)
+
+| Sistema | WER letterale IT | WER letterale EN | Esitazioni conservate | Esitazioni "inventate" | RTF |
+|---|---|---|---|---|---|
+| `turbo` | 2,0 | 4,5 | 2/352 | 0 | 0,047 |
+| `parakeet-v3` | 16,9 | 14,7 | 252/352 (IT 0%) | 95 | **0,013** |
+| `crisper-turbo-lang` | 15,5 | 11,0 | **322/352** | 157 | 0,16 |
+
+7. **CrisperWhisper è l'unico che conserva le esitazioni** (92%, in italiano 94%, nonostante sia nato per EN/DE). Il suo WER letterale alto è fatto soprattutto di **inserzioni**: 507 su 759 errori. Tra queste, **181 ripetono una parola vicina** ("sì sì", "the the") e **31 sono troncate** ("th-"). Quasi certamente molte sono **parlato vero mancante nei riferimenti**: i riferimenti silver partono dalla bozza di turbo, che toglie ripetizioni e false partenze. Anche gran parte delle 157 esitazioni "inventate" può essere vera, perché le esitazioni dei riferimenti sono incomplete per costruzione. Fino a una verifica all'ascolto, **i numeri di CrisperWhisper sono pessimistici e quelli di turbo ottimistici**.
+8. **Parakeet riscrive l'italiano:** "però" → "tuttavia" (6 volte), "concentrerei" → "concentrare". È la reinterpretazione che la decisione 0007 vuole evitare, e in italiano toglie tutte le esitazioni. In inglese le conserva (83%). È di gran lunga il più veloce: un'ora in meno di un minuto.
+9. **Normalizzazione:** `okay`/`ok`, `perchè`/`perché` e simili ora valgono come la stessa parola (convenzioni §2.9).
+
 ## Prossimi passi
 
+- **Verificare l'ancoraggio all'ascolto:** un campione delle inserzioni di CrisperWhisper (ripetizioni, troncate, esitazioni), con clip audio. Se sono vere, i riferimenti vanno corretti in quei punti, e CrisperWhisper diventa la base migliore da cui partire (bozze e fine-tuning). Attenzione però alla sua licenza non commerciale.
 - Completare il test set (en-001, it-001) e rilanciare con 3 semi.
-- Adattatori per **CrisperWhisper** (verbatim per costruzione) e **Parakeet v3**: è il confronto più interessante, ma servono torch o NeMo, da approvare.
-- Ascoltare a campione le inserzioni di `turbo-prompt` su it-002, per capire quanto pesa l'ancoraggio.
+- Ascoltare a campione le inserzioni di `turbo-prompt` su it-002.

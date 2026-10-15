@@ -69,6 +69,9 @@ def seg(start, end, *words, lang="it", **kw):
         ("3,000", "en", ["three", "thousand"]),
         ("3.000", "it", ["tremila"]),
         ("9.3", "it", ["nove", "virgola", "tre"]),
+        ("Okay,", "en", ["ok"]),
+        ("O.K.", "en", ["ok"]),
+        ("perchè", "it", ["perché"]),
     ],
 )
 def test_split_word(text, lang, expected):
