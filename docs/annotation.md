@@ -78,3 +78,16 @@ Whisper sbaglia tipicamente in questi punti:
 - **sbaglia nomi e termini inglesi** (`Mistral`, `Le Chat`): vanno corretti e marcati `|en`;
 - **sbaglia i confini dei segmenti:** `annotate draft` unisce già i segmenti separati da pause fino a 1 s (al massimo 30 s; `--no-merge` per disattivarlo), ma **non sa dove cambia il parlante**: lì il segmento va spezzato a mano;
 - **unisce o duplica le ripetizioni:** si sentono solo all'ascolto.
+
+## Riferimenti `adjudicated` (ascolto solo delle divergenze)
+
+Invece di correggere tutta una bozza, si ascoltano solo i punti in cui due trascrizioni non sono d'accordo ([decisione 0009](decisions/0009-two-models-and-crisperwhisper-license.md), [verifica](../results/2026-10-15-audit-crisper.md)).
+
+```bash
+uv run ilat adjudicate build it-002          # pagina in data/private/adjudicate/it-002/index.html
+uv run ilat adjudicate apply it-002 ~/Downloads/adjudication-it-002.json
+```
+
+- Se il file ha già un riferimento, si confronta quello (A) con CrisperWhisper (B). Altrimenti si parte da CrisperWhisper (A) e lo si confronta con Whisper turbo (B).
+- Per ogni divergenza: <kbd>spazio</kbd> riascolta, <kbd>1</kbd> A, <kbd>2</kbd> B, <kbd>3</kbd> scrivi il testo giusto. Senza risposta vale A.
+- `apply` scrive `<id>.ref.json` (il riferimento precedente resta come `<id>.ref.<qualità>.json`) e aggiorna il manifest: `reference_quality: adjudicated` e `derived_from: ["crisperwhisper"]`. Le esitazioni prese da CrisperWhisper sono ricondotte all'inventario della lingua (`um` → `ehm` in italiano).

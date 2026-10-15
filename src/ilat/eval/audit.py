@@ -107,8 +107,8 @@ def cut_clip(audio: Path, start: float, end: float, out: Path) -> None:
     begin = max(0.0, start - CLIP_PADDING)
     subprocess.run(
         ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-ss", f"{begin:.3f}", "-t",
-         f"{end + CLIP_PADDING - begin:.3f}", "-i", str(audio), "-vn", "-ac", "1", "-c:a", "aac",
-         str(out)],
+         f"{end + CLIP_PADDING - begin:.3f}", "-i", str(audio), "-vn", "-ac", "1", "-ar", "16000",
+         "-c:a", "aac", "-b:a", "32k", str(out)],
         check=True,
     )  # fmt: skip
 

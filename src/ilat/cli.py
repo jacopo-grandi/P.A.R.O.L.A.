@@ -8,6 +8,8 @@ ilat manifest check <file.jsonl>    validate a dataset manifest
 ilat eval [--systems a,b]           run ASR systems on the test set and write a report
 ilat audit build --system <name>    sample a system's insertions for a listening check
 ilat audit summary <answers.json>   share of insertions that were really spoken
+ilat adjudicate build <id>          listen only where two transcripts disagree
+ilat adjudicate apply <id> <answers.json>  write the adjudicated reference
 """
 
 import argparse
@@ -19,7 +21,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ilat import __version__
+from ilat import __version__, adjudicate
 from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
 from ilat.asr import DEFAULT_MODEL, MLXWhisperBackend
 from ilat.audio import FFmpegError
@@ -107,6 +109,21 @@ def build_parser() -> argparse.ArgumentParser:
     ab.add_argument("--seed", type=int, default=0, help="sampling seed")
     asm = ausub.add_parser("summary", help="summarize exported answers")
     asm.add_argument("file", type=Path)
+
+    ad = sub.add_parser("adjudicate", help="decide by listening where two transcripts disagree")
+    adsub = ad.add_subparsers(dest="action", required=True)
+    adb = adsub.add_parser("build", help="clips and review page for one manifest record")
+    adb.add_argument("id")
+    adb.add_argument("--manifest", type=Path, default=Path("data/manifests/test.jsonl"))
+    adb.add_argument("--root", type=Path, default=Path("."))
+    adb.add_argument("--hyp-dir", type=Path, default=Path("data/private/hyp"))
+    adb.add_argument("--out", type=Path, default=None, help="default: data/private/adjudicate/<id>")
+    ada = adsub.add_parser("apply", help="apply exported answers and update the manifest")
+    ada.add_argument("id")
+    ada.add_argument("answers", type=Path)
+    ada.add_argument("--manifest", type=Path, default=Path("data/manifests/test.jsonl"))
+    ada.add_argument("--root", type=Path, default=Path("."))
+    ada.add_argument("--dir", type=Path, default=None, help="default: data/private/adjudicate/<id>")
     return parser
 
 
@@ -253,6 +270,85 @@ def cmd_audit_summary(args) -> int:
     return 0
 
 
+CRISPER, TURBO = "crisper-turbo-lang", "turbo"
+
+
+def _record(manifest: Path, root: Path, record_id: str):
+    for r in check_manifest(manifest, root).records:
+        if r.id == record_id:
+            return r
+    raise FileNotFoundError(f"no record {record_id!r} in {manifest}")
+
+
+def cmd_adjudicate_build(args) -> int:
+    record = _record(args.manifest, args.root, args.id)
+    stem = Path(record.audio).stem
+    crisper = Transcript.load(args.hyp_dir / CRISPER / f"{stem}.json")
+    if record.reference:
+        base, other = Transcript.load(args.root / record.reference), crisper
+        labels = ("riferimento attuale", "CrisperWhisper")
+    else:
+        # No reference yet: start from CrisperWhisper (closer to verbatim, see
+        # results/2026-10-15-audit-crisper.md) and check it against turbo.
+        base = merge_segments(crisper)
+        other = Transcript.load(args.hyp_dir / TURBO / f"{stem}.json")
+        labels = ("CrisperWhisper", "Whisper turbo")
+    regions = adjudicate.find_regions(base, other)
+    out = args.out or Path("data/private/adjudicate") / args.id
+    out.mkdir(parents=True, exist_ok=True)
+    base.save(out / "base.json")
+    page = adjudicate.build(regions, args.root / record.audio, args.id, labels, out)
+    words = sum(len(s.words) for s in base.segments)
+    print(f"{len(regions)} disagreements over {words} words")
+    print(f"wrote {page}")
+    return 0
+
+
+def cmd_adjudicate_apply(args) -> int:
+    record = _record(args.manifest, args.root, args.id)
+    work = args.dir or Path("data/private/adjudicate") / args.id
+    base = Transcript.load(work / "base.json")
+    regions = adjudicate.load_regions(work)
+    answers = json.loads(args.answers.read_text(encoding="utf-8"))["answers"]
+    result = adjudicate.apply(base, regions, answers)
+    if base.metadata.kind == "reference":
+        text = to_annotation(result)
+    else:
+        text = to_annotation(result, draft=True).replace("# status: draft", "# status: reviewed", 1)
+    testset = (args.root / record.audio).parent
+    ann_path = testset / f"{args.id}.adjudicated.ann.txt"
+    ann_path.write_text(text, encoding="utf-8")
+    reference = from_annotation(text)
+    issues = lint(reference)
+    _print_issues(issues)
+    if has_errors(issues):
+        print(f"not written: fix {ann_path}, then `ilat annotate import` it", file=sys.stderr)
+        return 1
+    ref_path = testset / f"{args.id}.ref.json"
+    backup = testset / f"{args.id}.ref.{record.reference_quality}.json"
+    if ref_path.exists() and record.reference_quality and not backup.exists():
+        ref_path.rename(backup)
+        print(f"previous reference kept as {backup}")
+    reference.save(ref_path)
+    choices = Counter((answers.get(r.item_id) or {}).get("choice") or "A" for r in regions)
+    note = (f"Adjudicated {date.today().isoformat()}: {len(regions)} disagreements decided by "
+            f"listening (A {choices['A']}, B {choices['B']}, text {choices['text']}).")  # fmt: skip
+    lines = args.manifest.read_text(encoding="utf-8").splitlines()
+    out_lines = []
+    for line in lines:
+        if line.strip() and json.loads(line)["id"] == args.id:
+            rec = json.loads(line)
+            rec["reference"] = ref_path.relative_to(args.root).as_posix()
+            rec["reference_quality"] = "adjudicated"
+            rec["derived_from"] = sorted(set(rec.get("derived_from", [])) | {"crisperwhisper"})
+            rec["notes"] = ((rec.get("notes") or "") + " " + note).strip()
+            line = json.dumps(rec, ensure_ascii=False)
+        out_lines.append(line)
+    args.manifest.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    print(f"wrote {ref_path}; manifest updated ({note})")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
@@ -264,6 +360,8 @@ def main(argv: list[str] | None = None) -> int:
         ("eval", None): cmd_eval,
         ("audit", "build"): cmd_audit_build,
         ("audit", "summary"): cmd_audit_summary,
+        ("adjudicate", "build"): cmd_adjudicate_build,
+        ("adjudicate", "apply"): cmd_adjudicate_apply,
     }
     try:
         return handlers[(args.command, getattr(args, "action", None))](args)
