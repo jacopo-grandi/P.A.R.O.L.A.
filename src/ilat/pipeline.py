@@ -39,6 +39,7 @@ def transcribe_file(
 
     transcript = Transcript(
         metadata=Metadata(
+            kind="asr",
             audio_file=src.name,
             duration=duration,
             backend=backend.name,

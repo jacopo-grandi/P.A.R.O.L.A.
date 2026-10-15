@@ -41,3 +41,26 @@ def test_convert_result_empty():
     result = convert_result({"text": "", "segments": [], "language": "en"})
     assert result.segments == []
     assert result.language == "en"
+
+
+def test_convert_result_merges_elisions():
+    raw = {
+        "language": "it",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": " Sei d'accordo?",
+                "words": [
+                    {"word": " Sei", "start": 0.0, "end": 0.3, "probability": 0.9},
+                    {"word": " d", "start": 0.4, "end": 0.5, "probability": 0.8},
+                    {"word": "'accordo?", "start": 0.5, "end": 1.1, "probability": 0.6},
+                ],
+            }
+        ],
+    }
+    [seg] = convert_result(raw).segments
+    assert [w.text for w in seg.words] == ["Sei", "d'accordo?"]
+    merged = seg.words[1]
+    assert (merged.start, merged.end, merged.probability) == (0.4, 1.1, 0.6)
+    assert " ".join(w.text for w in seg.words) == seg.text

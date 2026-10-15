@@ -1,12 +1,29 @@
-from ilat.schema.render import format_timestamp, to_text
-from ilat.schema.transcript import SCHEMA_VERSION, Metadata, Segment, Transcript, Word
+from ilat.schema.clean import CleanSentence, CleanTranscript, WordRef
+from ilat.schema.render import format_timestamp, parse_timestamp, to_text
+from ilat.schema.transcript import (
+    SCHEMA_VERSION,
+    Channel,
+    Lang,
+    Metadata,
+    Segment,
+    Transcript,
+    Word,
+    WordTag,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
+    "Channel",
+    "CleanSentence",
+    "CleanTranscript",
+    "Lang",
     "Metadata",
     "Segment",
     "Transcript",
     "Word",
+    "WordRef",
+    "WordTag",
     "format_timestamp",
+    "parse_timestamp",
     "to_text",
 ]
