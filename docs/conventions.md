@@ -224,4 +224,7 @@ Queste regole sono verificate da test automatici (Fase 6).
 - **WER verbatim:** si tolgono solo eventi non verbali e `[inaudibile]`; tutto il resto conta.
 - **Disfluenze:** si misura, per `filler`, `truncated`, `repetition`, `false_start` ed `edit_term`, quante delle parole marcate nel riferimento il modello conserva e quante ne inventa. `reduplication` e `backchannel` vengono riportati a parte, non come disfluenze.
 - **Esclusi in tutte le metriche:** i segmenti `overlap` (misurati a parte); le parole `uncertain` sono escluse o pesate a parte.
+- **Qualità dei riferimenti** (campo `reference_quality` del manifest):
+  - `gold`: parole e tag verificati ascoltando tutto l'audio. Vale per tutte le metriche.
+  - `silver`: parole verificate da una persona, ma tag di disfluenza non verificati per intero (per esempio esitazioni proposte da un modello e controllate a campione). Vale per il WER classico e per il WER verbatim, ed è **escluso dalle metriche di disfluenza**, che falserebbe a favore del modello che ha proposto i candidati.
 - Le soglie dei segmenti ([§2.1](#21-segmenti)) si rivedono sul primo test set, se servono.

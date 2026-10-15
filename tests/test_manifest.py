@@ -15,6 +15,7 @@ def record(**kw):
         id="it-001",
         audio="data/private/a.m4a",
         reference="data/private/a.ref.json",
+        reference_quality="gold",
         lang="it",
         duration=120.0,
         source="own recording",
@@ -36,7 +37,7 @@ def test_valid_manifest(tmp_path):
     )
     assert report.errors == []
     assert report.hours_by_lang() == {"it": 120 / 3600, "en": 0.5}
-    assert report.summary().startswith("2 records (2 with reference)")
+    assert report.summary() == "2 records (references: 2 gold); en 0.50 h, it 0.03 h"
 
 
 def test_schema_errors(tmp_path):
@@ -74,7 +75,9 @@ def test_check_files(tmp_path):
     private = tmp_path / "data" / "private"
     private.mkdir(parents=True)
     path = write(
-        tmp_path, record(), record(id="it-002", audio="data/private/b.m4a", reference=None)
+        tmp_path,
+        record(),
+        record(id="it-002", audio="data/private/b.m4a", reference=None, reference_quality=None),
     )
 
     report = check_manifest(path, tmp_path, check_files=True)
@@ -97,3 +100,28 @@ def test_check_files_duration_and_lint(tmp_path):
     report = check_manifest(write(tmp_path, record(duration=200)), tmp_path, check_files=True)
     assert any("convention errors" in e for e in report.errors)
     assert any("differs from reference" in e for e in report.errors)
+
+
+def test_reference_quality_goes_with_reference(tmp_path):
+    bad = [
+        record(reference_quality=None),
+        record(id="x2", reference=None),
+        record(id="x3", reference_quality="bronze"),
+    ]
+    report = check_manifest(write(tmp_path, *bad), tmp_path)
+    assert len(report.errors) == 3
+
+
+def test_silver_is_excluded_from_disfluency_metrics(tmp_path):
+    report = check_manifest(
+        write(
+            tmp_path,
+            record(),
+            record(id="it-002", reference_quality="silver"),
+            record(id="it-003", reference=None, reference_quality=None),
+        ),
+        tmp_path,
+    )
+    assert report.errors == []
+    assert [r.counts_for_disfluency_metrics for r in report.records] == [True, False, False]
+    assert "references: 1 gold, 1 silver, 1 none" in report.summary()

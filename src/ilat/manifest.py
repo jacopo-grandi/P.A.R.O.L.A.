@@ -12,12 +12,18 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from ilat.schema import Transcript
 from ilat.schema.lint import has_errors, lint
 
 PRIVATE_DIR = PurePosixPath("data/private")
+
+# "gold": every word and tag checked by listening to the whole audio.
+# "silver": words checked by a human, but disfluency tags not fully verified (for instance,
+# fillers proposed by a model and checked only by sampling). Silver references count for
+# WER, but are excluded from the disfluency metrics, which they would bias.
+ReferenceQuality = Literal["gold", "silver"]
 # Tolerance between the manifest duration and the reference metadata duration.
 DURATION_TOLERANCE = 1.0
 
@@ -26,6 +32,7 @@ class ManifestRecord(BaseModel):
     id: str = Field(min_length=1)
     audio: str = Field(min_length=1, description="path relative to the repository root")
     reference: str | None = Field(default=None, description="reference transcript JSON")
+    reference_quality: ReferenceQuality | None = None
     lang: Literal["it", "en", "mixed"]
     duration: float = Field(gt=0)
     source: str = Field(min_length=1)
@@ -39,6 +46,16 @@ class ManifestRecord(BaseModel):
         if v is not None and (v.startswith("/") or "\\" in v or ".." in PurePosixPath(v).parts):
             raise ValueError(f"path must be relative to the repository root: {v!r}")
         return v
+
+    @model_validator(mode="after")
+    def _quality_with_reference(self) -> ManifestRecord:
+        if (self.reference is None) != (self.reference_quality is None):
+            raise ValueError("reference and reference_quality must be set together")
+        return self
+
+    @property
+    def counts_for_disfluency_metrics(self) -> bool:
+        return self.reference_quality == "gold"
 
     @property
     def is_private(self) -> bool:
@@ -58,10 +75,13 @@ class ManifestReport:
         return dict(hours)
 
     def summary(self) -> str:
-        with_ref = sum(r.reference is not None for r in self.records)
+        quality: dict[str, int] = defaultdict(int)
+        for r in self.records:
+            quality[r.reference_quality or "none"] += 1
+        refs = ", ".join(f"{quality[q]} {q}" for q in ("gold", "silver", "none") if quality[q])
         by_lang = ", ".join(f"{k} {v:.2f} h" for k, v in sorted(self.hours_by_lang().items()))
-        return f"{len(self.records)} records ({with_ref} with reference)" + (
-            f": {by_lang}" if by_lang else ""
+        return f"{len(self.records)} records (references: {refs})" + (
+            f"; {by_lang}" if by_lang else ""
         )
 
 
