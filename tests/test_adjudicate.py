@@ -104,6 +104,7 @@ def test_page_and_regions_roundtrip(tmp_path):
     page = adjudicate.write_page(regions, "it-002", ("riferimento", "crisper"), tmp_path)
     text = page.read_text()
     assert text.count("<section ") == 3 and "<mark>martedì</mark>" in text
+    assert text.count("<audio controls ") == 3
     loaded = adjudicate.load_regions(tmp_path)
     assert [(r.item_id, r.other_texts, r.other_times) for r in loaded] == [
         (r.item_id, r.other_texts, r.other_times) for r in regions

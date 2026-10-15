@@ -171,7 +171,7 @@ def write_page(regions: list[Region], file_id: str, labels: tuple[str, str], out
         rows.append(f"""
 <section id="{r.item_id}" data-id="{r.item_id}">
   <h2>{r.item_id} · {format_timestamp(r.start)[3:]}</h2>
-  <audio preload="none" src="{src}"></audio>
+  <audio controls preload="none" src="{src}"></audio>
   <p class="opt"><label><input type="radio" name="{r.item_id}" value="A"> <kbd>1</kbd>
     <b>A</b> <span class="ctx">{html.escape(r.before)}</span>
     <mark>{html.escape(r.base_text) or "∅"}</mark>
