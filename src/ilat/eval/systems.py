@@ -8,6 +8,7 @@ initial prompt rich in disfluencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from ilat.asr import DEFAULT_MODEL, ASRBackend, MLXWhisperBackend
 from ilat.asr.mlx_whisper_backend import SEED
@@ -30,8 +31,18 @@ class System:
     model: str = DEFAULT_MODEL
     force_language: bool = False
     prompt: bool = False
+    kind: Literal["mlx-whisper", "parakeet", "crisper"] = "mlx-whisper"
 
     def backend(self, lang: str, seed: int = SEED) -> ASRBackend:
+        # Optional backends are imported lazily: they need `uv sync --group baselines`.
+        if self.kind == "parakeet":
+            from ilat.asr.parakeet_backend import ParakeetBackend
+
+            return ParakeetBackend(self.model)
+        if self.kind == "crisper":
+            from ilat.asr.crisper_backend import CrisperBackend
+
+            return CrisperBackend(self.model, seed=seed)
         prompt = DISFLUENCY_PROMPTS.get(lang) if self.prompt else None
         return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed)
 
@@ -51,5 +62,10 @@ SYSTEMS = {
                force_language=True, prompt=True),
         System("large-v3-lang", "large-v3, language forced", model=LARGE_V3,
                force_language=True),
+        System("parakeet-v3", "Parakeet TDT 0.6B v3 (MLX), language detected",
+               model="mlx-community/parakeet-tdt-0.6b-v3", kind="parakeet"),
+        System("crisper-turbo-lang", "CrisperWhisper 2.0 turbo, verbatim mode, language forced "
+               "(non-commercial weights)", model="nyralabs/CrisperWhisper2.0_turbo",
+               force_language=True, kind="crisper"),
     ]
 }  # fmt: skip
