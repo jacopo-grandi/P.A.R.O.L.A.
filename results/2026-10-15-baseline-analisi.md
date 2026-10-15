@@ -42,6 +42,10 @@ I semi 0–2 sono calcolati con la normalizzazione finale (`okay` = `ok`); la co
 8. **Parakeet riscrive l'italiano:** "però" → "tuttavia" (6 volte), "concentrerei" → "concentrare". È la reinterpretazione che la decisione 0007 vuole evitare, e in italiano toglie tutte le esitazioni. In inglese le conserva (83%). È di gran lunga il più veloce: un'ora in meno di un minuto.
 9. **Normalizzazione:** `okay`/`ok`, `perchè`/`perché` e simili ora valgono come la stessa parola (convenzioni §2.9).
 
+## Verifica all'ascolto (aggiornamento)
+
+La verifica di 30 inserzioni di CrisperWhisper ([2026-10-15-audit-crisper.md](2026-10-15-audit-crisper.md)) dà il **93% di parlato vero**, e il 100% sulle 22 non di esitazione. I riferimenti silver mancano di circa l'8% delle parole dette. Con riferimenti corretti, le stime sono **CrisperWhisper circa 4–5% e turbo circa 10–11%** di WER letterale: la classifica di questa pagina si ribalta.
+
 ## Prossimi passi
 
 - **Verificare l'ancoraggio all'ascolto:** un campione delle inserzioni di CrisperWhisper (ripetizioni, troncate, esitazioni), con clip audio. Se sono vere, i riferimenti vanno corretti in quei punti, e CrisperWhisper diventa la base migliore da cui partire (bozze e fine-tuning). Attenzione però alla sua licenza non commerciale.
