@@ -8,6 +8,7 @@ from ilat.schema import Segment, Word
 from ilat.schema.vocab import LANGS
 
 DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
+SEED = 0
 
 
 def convert_result(result: dict[str, Any]) -> ASRResult:
@@ -65,12 +66,20 @@ def _merge_words(raw_words: list[dict[str, Any]]) -> list[Word]:
 class MLXWhisperBackend:
     name = "mlx-whisper"
 
-    def __init__(self, model: str = DEFAULT_MODEL, initial_prompt: str | None = None) -> None:
+    def __init__(
+        self, model: str = DEFAULT_MODEL, initial_prompt: str | None = None, seed: int = SEED
+    ) -> None:
         self.model = model
         self.initial_prompt = initial_prompt
+        self.seed = seed
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
+        import mlx.core as mx
         import mlx_whisper
+
+        # Whisper falls back to sampling at higher temperatures when decoding fails
+        # (loops, low confidence): a fixed seed makes those runs reproducible.
+        mx.random.seed(self.seed)
 
         # Library defaults are kept on purpose: decoding parameters only change after
         # they are measured on the test set (Phase 2).

@@ -87,6 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--hyp-dir", type=Path, default=Path("data/private/hyp"))
     e.add_argument("--out", type=Path, default=None, help="default: results/<date>-baseline")
     e.add_argument("--force", action="store_true", help="re-run cached transcriptions")
+    e.add_argument(
+        "--seed", type=int, default=0, help="random seed for decoding (use another --hyp-dir)"
+    )
     return parser
 
 
@@ -186,7 +189,9 @@ def cmd_eval(args) -> int:
     rows = []
     for system in systems:
         print(f"[{system.name}] transcribing {len(records)} files (cached ones are skipped)")
-        timing = run_system(system, records, args.root, args.hyp_dir, force=args.force)
+        timing = run_system(
+            system, records, args.root, args.hyp_dir, force=args.force, seed=args.seed
+        )
         rows += score_system(system, records, args.root, args.hyp_dir, timing)
     out = args.out or Path("results") / f"{date.today().isoformat()}-baseline"
     md, csv_path = write_report(rows, systems, records, out)

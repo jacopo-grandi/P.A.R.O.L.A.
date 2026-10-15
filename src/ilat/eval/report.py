@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from ilat.asr.mlx_whisper_backend import SEED
 from ilat.eval.metrics import DISFLUENCY_TAGS, SegmentScore, bootstrap_ci, score_transcript, wer_of
 from ilat.eval.normalize import METRICS
 from ilat.eval.systems import System
@@ -22,7 +23,12 @@ METRIC_LABELS = {"literal": "WER letterale", "classic": "WER classico", "verbati
 
 
 def run_system(
-    system: System, records: list[ManifestRecord], root: Path, hyp_dir: Path, force: bool = False
+    system: System,
+    records: list[ManifestRecord],
+    root: Path,
+    hyp_dir: Path,
+    force: bool = False,
+    seed: int = SEED,
 ) -> dict[str, float]:
     """Transcribe every record with ``system``; cached in ``hyp_dir/<system>/<id>.json``.
 
@@ -37,7 +43,7 @@ def run_system(
         if target.exists() and not force:
             continue
         t0 = time.perf_counter()
-        transcribe_file(audio, system.backend(r.lang), out_dir=out_dir,
+        transcribe_file(audio, system.backend(r.lang, seed), out_dir=out_dir,
                         language=system.language(r.lang))  # fmt: skip
         timing[r.id] = time.perf_counter() - t0
         timing_path.write_text(json.dumps(timing, indent=2))
@@ -175,6 +181,8 @@ def write_report(
         "- **WER letterale** è la metrica principale (decisione 0007): tolte solo le esitazioni, "
         "tutto il resto conta parola per parola.",
         "- **RTF**: tempo di elaborazione / durata dell'audio, sul Mac (M4 Pro).",
+        "- **Riproducibilità**: seme casuale MLX fisso (0). Il temperature fallback di Whisper "
+        "campiona a caso: senza seme due run dello stesso sistema danno numeri diversi.",
         "- **Riferimenti silver**: parole verificate da una persona, esitazioni in gran parte "
         "proposte da Whisper large-v3-turbo. Le metriche sulle esitazioni sono ottimistiche "
         "per le varianti di turbo, soprattutto con prompt.",

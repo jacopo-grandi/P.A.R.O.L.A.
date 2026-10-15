@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ilat.asr import DEFAULT_MODEL, ASRBackend, MLXWhisperBackend
+from ilat.asr.mlx_whisper_backend import SEED
 
 LARGE_V3 = "mlx-community/whisper-large-v3-mlx"
 
@@ -30,9 +31,9 @@ class System:
     force_language: bool = False
     prompt: bool = False
 
-    def backend(self, lang: str) -> ASRBackend:
+    def backend(self, lang: str, seed: int = SEED) -> ASRBackend:
         prompt = DISFLUENCY_PROMPTS.get(lang) if self.prompt else None
-        return MLXWhisperBackend(self.model, initial_prompt=prompt)
+        return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed)
 
     def language(self, lang: str) -> str | None:
         """Language passed to the backend for a file whose manifest language is ``lang``."""
