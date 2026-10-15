@@ -53,7 +53,11 @@ def test_write_page_and_summarize(tmp_path):
     items = [audit.Insertion("en-002", "repetition", "we", 1.0, 1.2, "we ⟦we⟧ need", "we need",
                              "A01")]  # fmt: skip
     page = audit.write_page(items, "crisper-turbo-lang", tmp_path).read_text()
-    assert "<mark>we</mark>" in page and 'src="clips/A01.m4a"' in page
+    assert "<mark>we</mark>" in page and 'src="clips/A01.m4a"' in page  # clip not cut yet
+    (tmp_path / "clips").mkdir()
+    (tmp_path / "clips" / "A01.m4a").write_bytes(b"\x00\x01")
+    page = audit.write_page(items, "crisper-turbo-lang", tmp_path).read_text()
+    assert 'src="data:audio/mp4;base64,AAE="' in page
     assert "http" not in page.split("<script>")[1]  # no network
     assert json.loads((tmp_path / "items.json").read_text())[0]["item_id"] == "A01"
 

@@ -9,6 +9,7 @@ much of the system's WER is due to the reference.
 
 from __future__ import annotations
 
+import base64
 import html
 import json
 import random
@@ -112,11 +113,20 @@ def cut_clip(audio: Path, start: float, end: float, out: Path) -> None:
     )  # fmt: skip
 
 
+def _audio_src(clip: Path) -> str:
+    """Clips are embedded as data URIs, so the page works however it is opened (file, data:
+    URL, another folder): relative links break when the page is not served from its folder."""
+    if not clip.exists():
+        return f"clips/{clip.name}"
+    return "data:audio/mp4;base64," + base64.b64encode(clip.read_bytes()).decode("ascii")
+
+
 def write_page(items: list[Insertion], system: str, out_dir: Path) -> Path:
-    """Self-contained HTML page (no network); answers kept in localStorage and exported as
-    JSON with the "Esporta" button."""
+    """Self-contained HTML page (no network, audio embedded); answers kept in localStorage
+    and exported as JSON with the "Esporta" button."""
     rows = []
     for ins in items:
+        src = _audio_src(out_dir / "clips" / f"{ins.item_id}.m4a")
         hyp = html.escape(ins.hyp_context).replace("⟦", "<mark>").replace("⟧", "</mark>")
         radios = " ".join(
             f'<label><input type="radio" name="{ins.item_id}" value="{a}"> {a}</label>'
@@ -126,7 +136,7 @@ def write_page(items: list[Insertion], system: str, out_dir: Path) -> Path:
 <section id="{ins.item_id}">
   <h2>{ins.item_id} · {html.escape(ins.file_id)} · {format_timestamp(ins.start)[3:]} ·
       <span class="cat">{ins.category}</span></h2>
-  <audio controls preload="none" src="clips/{ins.item_id}.m4a"></audio>
+  <audio controls preload="none" src="{src}"></audio>
   <p><b>{html.escape(system)}:</b> {hyp}</p>
   <p class="ref"><b>riferimento:</b> {html.escape(ins.ref_context)}</p>
   <p class="answer">La parola evidenziata è stata detta davvero? {radios}
