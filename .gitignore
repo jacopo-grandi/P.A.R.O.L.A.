@@ -51,3 +51,6 @@ mlx_models/
 .DS_Store
 .idea/
 .vscode/
+
+# Built helper binaries
+bin/

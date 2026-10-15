@@ -1,6 +1,7 @@
 """Command-line interface.
 
 ilat transcribe <file>              audio/video -> <name>.json + <name>.txt
+ilat record                         record a call (mic + system audio) and transcribe it
 ilat validate <transcript.json>     check a reference against docs/conventions.md
 ilat annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 ilat annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -34,6 +35,12 @@ from ilat.schema import Transcript
 from ilat.schema.lint import has_errors, lint
 
 LANGUAGES = ("auto", "it", "en")
+ENGINES = ("turbo", "crisper")
+CRISPER_NOTICE = (
+    "CrisperWhisper 2.0 weights and outputs are licensed for non-commercial use only "
+    "(nyra health Non-Commercial Research License): do not use it for commercial purposes. "
+    "See docs/decisions/0009-two-models-and-crisperwhisper-license.md."
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +61,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     t.add_argument(
         "--model", default=DEFAULT_MODEL, help=f"mlx-whisper model (default: {DEFAULT_MODEL})"
+    )
+
+    rc = sub.add_parser(
+        "record", help="record a call (microphone + system audio) and transcribe it"
+    )
+    rc.add_argument("--out", type=Path, default=Path("data/private/calls"),
+                    help="output folder (default: data/private/calls, ignored by git)")  # fmt: skip
+    rc.add_argument("--name", default=None, help="file name (default: call-<date>-<time>)")
+    rc.add_argument("--lang", choices=LANGUAGES, default="auto")
+    rc.add_argument("--duration", type=float, default=None, help="stop after N seconds")
+    rc.add_argument("--no-mic", action="store_true", help="system audio only")
+    rc.add_argument("--no-system", action="store_true", help="microphone only")
+    rc.add_argument(
+        "--engine",
+        choices=ENGINES,
+        default="turbo",
+        help="turbo (default, MIT) or crisper (CrisperWhisper 2.0: non-commercial use only, "
+        "needs `uv sync --group baselines`)",
     )
 
     v = sub.add_parser("validate", help="check a reference transcript against the conventions")
@@ -161,6 +186,26 @@ def cmd_transcribe(args) -> int:
     print(f"wrote {outputs.json_path}")
     print(f"wrote {outputs.txt_path}")
     return 0
+
+
+def make_engine(engine: str):
+    if engine == "crisper":
+        print(f"notice: {CRISPER_NOTICE}", file=sys.stderr)
+        from ilat.asr.crisper_backend import CrisperBackend
+
+        return CrisperBackend()
+    return MLXWhisperBackend()
+
+
+def cmd_record(args) -> int:
+    from ilat.capture.recorder import main_record
+
+    language = None if args.lang == "auto" else args.lang
+    if args.engine == "crisper" and language is None:
+        print("error: --engine crisper needs --lang it or --lang en", file=sys.stderr)
+        return 1
+    return main_record(args.out, args.name, make_engine(args.engine), language,
+                       args.duration, not args.no_mic, not args.no_system)  # fmt: skip
 
 
 def cmd_validate(args) -> int:
@@ -391,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
         ("transcribe", None): cmd_transcribe,
+        ("record", None): cmd_record,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,
