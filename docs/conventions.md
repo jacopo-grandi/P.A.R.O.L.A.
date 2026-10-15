@@ -1,6 +1,6 @@
 # Convenzioni di trascrizione
 
-Stato: **bozza v0.1**, decisa il 2026-10-15, in attesa di approvazione finale.
+Stato: **v0.1 approvata** da Jacopo il 2026-10-15.
 
 Queste regole valgono per i riferimenti scritti a mano (test set), per i convertitori dei corpora (Fase 3) e per la valutazione (Fase 2). Il livello pulito (Fase 6) può fare solo ciò che è elencato in [§3](#3-livello-pulito).
 
