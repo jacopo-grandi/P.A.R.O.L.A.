@@ -14,7 +14,7 @@ uv run ilat annotate import data/private/call.ann.txt # -> call.ref.json (riferi
 1. Apri `call.ann.txt` in un editor e correggi **ascoltando l'audio**: testo, confini dei segmenti, lingua e codici.
 2. Quando hai controllato tutto il file, cambia `# status: draft` in `# status: reviewed`. Finché resta `draft` l'import rifiuta il file: così l'output del modello non può finire nel test set per errore.
 3. `import` controlla il file con le regole delle convenzioni. Se ci sono errori, non scrive nulla e indica il segmento e la parola da sistemare. Gli avvisi (per esempio cifre nel testo) non bloccano.
-4. Aggiungi una riga al manifest `data/manifests/test.jsonl` e controlla tutto con:
+4. Nel manifest `data/manifests/test.jsonl`, nella riga del file, imposta `"reference": "data/private/testset/<id>.ref.json"` (o aggiungi una riga nuova per una registrazione nuova). Poi controlla tutto con:
    ```bash
    uv run ilat manifest check data/manifests/test.jsonl --files
    ```

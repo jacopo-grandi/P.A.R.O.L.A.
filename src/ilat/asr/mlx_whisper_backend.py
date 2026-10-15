@@ -15,14 +15,17 @@ def convert_result(result: dict[str, Any]) -> ASRResult:
     language = result.get("language")
     # The schema only knows it/en; any other detected language stays in the metadata.
     segment_lang = language if language in LANGS else None
-    segments = []
+    segments: list[Segment] = []
     for seg in result.get("segments", []):
         words = _merge_words(seg.get("words", []))
+        # Segments whose words could not be aligned sometimes keep timestamps that go back
+        # before the previous segment. Keep the text order and move the start forward.
+        start = max(seg["start"], segments[-1].start) if segments else seg["start"]
         segments.append(
             Segment(
                 text=seg["text"].strip(),
-                start=seg["start"],
-                end=max(seg["end"], seg["start"]),
+                start=start,
+                end=max(seg["end"], start),
                 lang=segment_lang,
                 words=words,
             )

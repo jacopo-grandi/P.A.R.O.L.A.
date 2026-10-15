@@ -25,6 +25,7 @@ data/manifests/*
 *.aif
 *.aiff
 *.caf
+*.qta
 *.wma
 *.amr
 *.3gp

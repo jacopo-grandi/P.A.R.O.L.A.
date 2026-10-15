@@ -17,7 +17,7 @@ repos:
         name: block audio/video files
         entry: Audio and video files must never be committed (see CLAUDE.md).
         language: fail
-        files: '(?i)\.(wav|wave|mp3|m4a|mp4|m4v|mov|mkv|webm|avi|flac|ogg|oga|opus|aac|aif|aiff|caf|wma|amr|3gp)$'
+        files: '(?i)\.(wav|wave|mp3|m4a|mp4|m4v|mov|mkv|webm|avi|flac|ogg|oga|opus|aac|aif|aiff|caf|qta|wma|amr|3gp)$'
       - id: no-private-data
         name: block data/ outside manifests
         entry: Only data/manifests/ may be committed; raw and private data stay local.

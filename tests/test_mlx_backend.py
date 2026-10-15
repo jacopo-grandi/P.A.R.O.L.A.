@@ -64,3 +64,17 @@ def test_convert_result_merges_elisions():
     merged = seg.words[1]
     assert (merged.start, merged.end, merged.probability) == (0.4, 1.1, 0.6)
     assert " ".join(w.text for w in seg.words) == seg.text
+
+
+def test_convert_result_keeps_segments_sorted():
+    raw = {
+        "language": "it",
+        "segments": [
+            {"start": 10.0, "end": 10.5, "text": " creare", "words": []},
+            {"start": 9.0, "end": 9.4, "text": " passare", "words": []},
+            {"start": 11.0, "end": 12.0, "text": " poi", "words": []},
+        ],
+    }
+    segs = convert_result(raw).segments
+    assert [s.text for s in segs] == ["creare", "passare", "poi"]
+    assert [(s.start, s.end) for s in segs] == [(10.0, 10.5), (10.0, 10.0), (11.0, 12.0)]
