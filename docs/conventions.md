@@ -222,6 +222,7 @@ Queste regole sono verificate da test automatici (Fase 6).
 
 - **WER classico:** si tolgono `filler`, `truncated`, `repetition`, `reduplication`, `false_start`, `edit_term`, eventi non verbali e `[inaudibile]`; numeri e grafie vengono normalizzati.
 - **WER verbatim:** si tolgono solo eventi non verbali e `[inaudibile]`; tutto il resto conta.
+- **WER letterale** (metrica principale, [decisione 0007](decisions/0007-literal-fidelity-first.md)): si tolgono esitazioni, eventi non verbali e `[inaudibile]`; ripetizioni, false partenze, troncate ed errori grammaticali contano. Si normalizzano solo maiuscole e punteggiatura.
 - **Disfluenze:** si misura, per `filler`, `truncated`, `repetition`, `false_start` ed `edit_term`, quante delle parole marcate nel riferimento il modello conserva e quante ne inventa. `reduplication` e `backchannel` vengono riportati a parte, non come disfluenze.
 - **Esclusi in tutte le metriche:** i segmenti `overlap` (misurati a parte); le parole `uncertain` sono escluse o pesate a parte.
 - **Qualità dei riferimenti** (campo `reference_quality` del manifest):
