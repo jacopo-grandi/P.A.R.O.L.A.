@@ -112,7 +112,7 @@ def test_reference_quality_goes_with_reference(tmp_path):
     assert len(report.errors) == 3
 
 
-def test_silver_is_excluded_from_disfluency_metrics(tmp_path):
+def test_gold_and_silver_count_for_disfluency_metrics(tmp_path):
     report = check_manifest(
         write(
             tmp_path,
@@ -123,5 +123,5 @@ def test_silver_is_excluded_from_disfluency_metrics(tmp_path):
         tmp_path,
     )
     assert report.errors == []
-    assert [r.counts_for_disfluency_metrics for r in report.records] == [True, False, False]
+    assert [r.counts_for_disfluency_metrics for r in report.records] == [True, True, False]
     assert "references: 1 gold, 1 silver, 1 none" in report.summary()

@@ -21,8 +21,9 @@ PRIVATE_DIR = PurePosixPath("data/private")
 
 # "gold": every word and tag checked by listening to the whole audio.
 # "silver": words checked by a human, but disfluency tags not fully verified (for instance,
-# fillers proposed by a model and checked only by sampling). Silver references count for
-# WER, but are excluded from the disfluency metrics, which they would bias.
+# fillers proposed by a model and checked only by sampling).
+# Both count for every metric (decision 0005, amended 2026-10-15); reports state the
+# quality of the references behind each number.
 ReferenceQuality = Literal["gold", "silver"]
 # Tolerance between the manifest duration and the reference metadata duration.
 DURATION_TOLERANCE = 1.0
@@ -55,7 +56,7 @@ class ManifestRecord(BaseModel):
 
     @property
     def counts_for_disfluency_metrics(self) -> bool:
-        return self.reference_quality == "gold"
+        return self.reference_quality in ("gold", "silver")
 
     @property
     def is_private(self) -> bool:

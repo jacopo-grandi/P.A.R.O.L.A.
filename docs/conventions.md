@@ -226,5 +226,5 @@ Queste regole sono verificate da test automatici (Fase 6).
 - **Esclusi in tutte le metriche:** i segmenti `overlap` (misurati a parte); le parole `uncertain` sono escluse o pesate a parte.
 - **Qualità dei riferimenti** (campo `reference_quality` del manifest):
   - `gold`: parole e tag verificati ascoltando tutto l'audio. Vale per tutte le metriche.
-  - `silver`: parole verificate da una persona, ma tag di disfluenza non verificati per intero (per esempio esitazioni proposte da un modello e controllate a campione). Vale per il WER classico e per il WER verbatim, ed è **escluso dalle metriche di disfluenza**, che falserebbe a favore del modello che ha proposto i candidati.
+  - `silver`: parole verificate da una persona, ma tag di disfluenza non verificati per intero (per esempio esitazioni proposte da un modello e controllate a campione). Vale per tutte le metriche (decisione del 2026-10-15), ma il report indica sempre su quali riferimenti è calcolato ogni numero. Se i candidati li ha proposti un modello, le metriche di disfluenza di quel modello sono ottimistiche.
 - Le soglie dei segmenti ([§2.1](#21-segmenti)) si rivedono sul primo test set, se servono.
