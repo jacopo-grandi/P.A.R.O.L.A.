@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat.annotate import AnnotationError, from_annotation, to_annotation
+from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
 from ilat.schema import Metadata, Segment, Transcript, Word
 from ilat.schema.lint import lint
 
@@ -157,3 +157,67 @@ def test_draft_from_asr_output():
     imported = from_annotation(draft.replace("# status: draft", "# status: reviewed"))
     assert imported.segments[0].words[0].tags == ["filler"]
     assert any("'okay'" in i.message for i in lint(imported))
+
+
+def _asr(*segments: Segment) -> Transcript:
+    return Transcript(
+        metadata=Metadata(
+            audio_file="call.m4a",
+            duration=100.0,
+            created_at=datetime(2026, 10, 15, tzinfo=UTC),
+            ilat_version="0",
+        ),
+        segments=list(segments),
+    )
+
+
+def _seg(start, end, text, **kw):
+    return Segment(
+        start=start, end=end, text=text, lang=kw.pop("lang", "it"),
+        words=[Word(text=t) for t in text.split()], **kw,
+    )  # fmt: skip
+
+
+def test_merge_joins_short_gaps():
+    t = merge_segments(_asr(_seg(0, 1, "ciao"), _seg(1.5, 2, "a tutti"), _seg(2.8, 3, "oggi")))
+    [s] = t.segments
+    assert (s.start, s.end, s.text) == (0, 3, "ciao a tutti oggi")
+    assert [w.text for w in s.words] == ["ciao", "a", "tutti", "oggi"]
+
+
+def test_merge_gap_threshold_is_inclusive():
+    t = merge_segments(_asr(_seg(0, 1, "a"), _seg(2.0, 3, "b"), _seg(4.01, 5, "c")))
+    assert [s.text for s in t.segments] == ["a b", "c"]
+
+
+def test_merge_respects_max_duration():
+    t = merge_segments(_asr(_seg(0, 20, "a"), _seg(20.5, 29.5, "b"), _seg(30, 31, "c")))
+    assert [s.text for s in t.segments] == ["a b", "c"]
+
+
+def test_merge_keeps_different_lang_channel_speaker_and_overlap_apart():
+    t = merge_segments(
+        _asr(
+            _seg(0, 1, "uno"),
+            _seg(1.1, 2, "two", lang="en"),
+            _seg(2.1, 3, "tre", channel="mic"),
+            _seg(3.1, 4, "quattro", channel="mic", speaker="B"),
+            _seg(4.1, 5, "cinque", channel="mic", speaker="B", overlap=True),
+        )
+    )
+    assert len(t.segments) == 5
+
+
+def test_merge_keeps_text_of_unaligned_segments_in_draft():
+    t = merge_segments(
+        _asr(_seg(0, 1, "creare"), Segment(start=1, end=1.5, text="tutti i token", lang="it"))
+    )
+    [s] = t.segments
+    assert s.text == "creare tutti i token"
+    assert "creare tutti i token\n" in to_annotation(t, draft=True)
+
+
+def test_merge_does_not_modify_input():
+    original = _asr(_seg(0, 1, "a"), _seg(1.2, 2, "b"))
+    merge_segments(original)
+    assert len(original.segments) == 2

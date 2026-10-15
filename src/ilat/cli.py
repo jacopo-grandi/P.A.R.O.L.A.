@@ -14,7 +14,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from ilat import __version__
-from ilat.annotate import AnnotationError, from_annotation, to_annotation
+from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
 from ilat.asr import DEFAULT_MODEL, MLXWhisperBackend
 from ilat.audio import FFmpegError
 from ilat.manifest import check_manifest
@@ -54,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("file", type=Path, help="transcript JSON produced by `ilat transcribe`")
     d.add_argument("-o", "--out", type=Path, default=None, help="default: <name>.ann.txt")
     d.add_argument("--force", action="store_true", help="overwrite an existing file")
+    d.add_argument(
+        "--merge-gap",
+        type=float,
+        default=1.0,
+        help="join segments separated by at most this many seconds, up to 30 s (default: 1.0)",
+    )
+    d.add_argument("--no-merge", action="store_true", help="keep the ASR segments as they are")
     i = asub.add_parser("import", help="convert an edited annotation file to a reference JSON")
     i.add_argument("file", type=Path, help="annotation file (.ann.txt)")
     i.add_argument("-o", "--out", type=Path, default=None, help="default: <name>.ref.json")
@@ -108,8 +115,12 @@ def cmd_annotate_draft(args) -> int:
     if out.exists() and not args.force:
         print(f"error: {out} exists (use --force to overwrite)", file=sys.stderr)
         return 1
-    out.write_text(to_annotation(Transcript.load(args.file), draft=True), encoding="utf-8")
-    print(f"wrote {out}")
+    transcript = Transcript.load(args.file)
+    n_asr = len(transcript.segments)
+    if not args.no_merge:
+        transcript = merge_segments(transcript, max_gap=args.merge_gap)
+    out.write_text(to_annotation(transcript, draft=True), encoding="utf-8")
+    print(f"wrote {out} ({len(transcript.segments)} segments from {n_asr})")
     return 0
 
 

@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 
 from ilat import __version__
 from ilat.schema import Metadata, Segment, Transcript, Word, WordTag, format_timestamp
+from ilat.schema.lint import MAX_SEGMENT_SECONDS
 from ilat.schema.render import parse_timestamp
 from ilat.schema.vocab import (
     AUTO_FILLERS,
@@ -102,7 +103,8 @@ def to_annotation(transcript: Transcript, draft: bool = False) -> str:
     for seg in transcript.segments:
         lines.append(_header(seg, draft))
         if draft or not seg.words:
-            lines.append(" ".join(w.text for w in seg.words) or seg.text)
+            # ASR segments whose words could not be aligned only have their text.
+            lines.append(seg.text if draft else " ".join(w.text for w in seg.words) or seg.text)
         else:
             all_bc = all("backchannel" in w.tags for w in seg.words)
             lines.append(" ".join(_render_word(w, seg, all_bc) for w in seg.words))
@@ -141,6 +143,39 @@ def _render_word(w: Word, seg: Segment, segment_bc: bool) -> str:
         body, punct = split_punctuation(w.text)
         return f"({body}?){suffix}{punct}"
     return f"{w.text}{suffix}"
+
+
+def merge_segments(
+    transcript: Transcript, max_gap: float = 1.0, max_duration: float = MAX_SEGMENT_SECONDS
+) -> Transcript:
+    """Join consecutive segments separated by at most ``max_gap`` seconds.
+
+    Used for drafts: Whisper cuts speech into very short segments, while the conventions
+    (§2.1) want one segment per utterance, split at pauses longer than 1 s and at most 30 s
+    long. Segments are merged only when lang, channel and speaker match and neither is an
+    overlap; speaker changes on a single channel are left to the annotator.
+    """
+    merged: list[Segment] = []
+    for seg in transcript.segments:
+        prev = merged[-1] if merged else None
+        if (
+            prev is not None
+            and not prev.overlap
+            and not seg.overlap
+            and (prev.lang, prev.channel, prev.speaker) == (seg.lang, seg.channel, seg.speaker)
+            and seg.start - prev.end <= max_gap
+            and max(prev.end, seg.end) - prev.start <= max_duration
+        ):
+            merged[-1] = prev.model_copy(
+                update={
+                    "end": max(prev.end, seg.end),
+                    "text": " ".join(t for t in (prev.text, seg.text) if t),
+                    "words": prev.words + seg.words,
+                }
+            )
+        else:
+            merged.append(seg)
+    return transcript.model_copy(update={"segments": merged})
 
 
 # --------------------------------------------------------------------------- import

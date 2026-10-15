@@ -76,5 +76,5 @@ Whisper sbaglia tipicamente in questi punti:
 - **scrive "okay" o "OK":** va scritto `ok`;
 - **scrive i numeri in cifre:** vanno in lettere;
 - **sbaglia nomi e termini inglesi** (`Mistral`, `Le Chat`): vanno corretti e marcati `|en`;
-- **sbaglia i confini dei segmenti:** vanno rifatti dove cambia il parlante o c'è una pausa di più di 1 s;
+- **sbaglia i confini dei segmenti:** `annotate draft` unisce già i segmenti separati da pause fino a 1 s (al massimo 30 s; `--no-merge` per disattivarlo), ma **non sa dove cambia il parlante**: lì il segmento va spezzato a mano;
 - **unisce o duplica le ripetizioni:** si sentono solo all'ascolto.
