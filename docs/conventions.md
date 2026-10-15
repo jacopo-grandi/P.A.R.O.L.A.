@@ -20,6 +20,7 @@ Gli esempi sono inventati.
 - Un segmento è un enunciato di un solo parlante. Si apre un nuovo segmento al cambio di parlante o dopo una pausa di più di 1 s.
 - Durata massima di un segmento: 30 s. Oltre, si spezza alla pausa più vicina.
 - Ogni segmento ha `lang`, la lingua prevalente (`it` o `en`), e `channel` (`mic`, `system` o `mixed`).
+- **Eccezione per le registrazioni a un solo canale** (decisa il 2026-10-15): se separare a mano i turni di più parlanti non è pratico, un segmento può contenerne più d'uno, con `speaker` vuoto. Le metriche si calcolano sul testo dell'intero file, quindi i confini dei segmenti non le influenzano. Nelle registrazioni a due canali dell'app (Fase 7) i turni si separano per canale.
 
 ### 2.2 Esitazioni (`filler`)
 

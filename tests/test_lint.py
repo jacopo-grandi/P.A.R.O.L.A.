@@ -156,3 +156,30 @@ def test_word_timestamps_inside_segment_and_ordered():
 def test_has_errors():
     assert not has_errors(lint(ref(seg(W("4000")))))
     assert has_errors(lint(ref(seg(W("okay")))))
+
+
+def test_untagged_repetition_is_a_warning():
+    issues = lint(ref(seg(W("il"), W("il"), W("progetto"))))
+    assert [(i.severity, i.word) for i in issues] == [("warning", 0)]
+    assert "tag it 'rep' or 'red'" in issues[0].message
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        [W("il,", "repetition"), W("il")],
+        [W("sì,", "reduplication"), W("sì")],
+        [W("eh", "filler"), W("eh", "filler")],
+        [W("mh", "backchannel"), W("mh", "backchannel")],
+        [W("[risata]", "nonverbal", lang=None), W("[risata]", "nonverbal", lang=None)],
+    ],
+)
+def test_tagged_or_exempt_repetitions_pass(words):
+    assert lint(ref(seg(*words))) == []
+
+
+def test_glued_truncation_is_a_warning():
+    issues = lint(ref(seg(W("fi-fissi"))))
+    assert [i.severity for i in issues] == ["warning"]
+    assert "'fi- fissi'" in issues[0].message
+    assert lint(ref(seg(W("e-mail")))) == []

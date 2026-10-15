@@ -93,6 +93,14 @@ def _lint_segment(i: int, seg: Segment) -> list[Issue]:
             core(x.text) for x in seg.words[j + 1 :]
         }:
             err("repeated word has no later occurrence in the segment", j)
+        nxt = seg.words[j + 1] if j + 1 < len(seg.words) else None
+        if (
+            nxt is not None
+            and core(w.text) == core(nxt.text)
+            and w.text not in NONVERBAL
+            and not {"repetition", "reduplication", "filler", "backchannel"} & set(w.tags)
+        ):
+            warn(f"{w.text!r} is repeated: tag it 'rep' or 'red' (§2.4)", j)
     return issues
 
 
@@ -123,6 +131,9 @@ def _lint_word(w: Word, seg: Segment) -> list[tuple[Literal["error", "warning"],
         out.append(("error", "word ending with '-' must have the tag 'truncated'"))
     if "truncated" in tags and not truncated_form:
         out.append(("error", "truncated word must end with '-'"))
+    head, sep, tail = core(text).partition("-")
+    if sep and head and tail.startswith(head):
+        out.append(("warning", f"{text!r} looks like a truncation: write it as '{head}- {tail}'"))
 
     # Fillers come from the closed inventory of their language.
     if "filler" in tags:
