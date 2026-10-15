@@ -22,9 +22,18 @@ PRIVATE_DIR = PurePosixPath("data/private")
 # "gold": every word and tag checked by listening to the whole audio.
 # "silver": words checked by a human, but disfluency tags not fully verified (for instance,
 # fillers proposed by a model and checked only by sampling).
+# "adjudicated": every disagreement between two independent systems decided by listening
+# (between silver and gold: words where both systems agree are not listened to).
 # Both count for every metric (decision 0005, amended 2026-10-15); reports state the
 # quality of the references behind each number.
-ReferenceQuality = Literal["gold", "silver"]
+ReferenceQuality = Literal["gold", "adjudicated", "silver"]
+
+# Sources whose outputs carry a non-commercial license into anything derived from them
+# (decision 0009). Data marked with any of these must never train ilat-free.
+NON_FREE_SOURCES = {
+    "crisperwhisper": "nyra health Non-Commercial Research License (weights and Outputs)",
+    "kiparla": "CC BY-NC-SA 4.0 and KIParla terms of use",
+}
 # Tolerance between the manifest duration and the reference metadata duration.
 DURATION_TOLERANCE = 1.0
 
@@ -34,6 +43,8 @@ class ManifestRecord(BaseModel):
     audio: str = Field(min_length=1, description="path relative to the repository root")
     reference: str | None = Field(default=None, description="reference transcript JSON")
     reference_quality: ReferenceQuality | None = None
+    # Systems or corpora whose outputs went into this record (see NON_FREE_SOURCES).
+    derived_from: list[str] = Field(default_factory=list)
     lang: Literal["it", "en", "mixed"]
     duration: float = Field(gt=0)
     source: str = Field(min_length=1)
@@ -56,7 +67,7 @@ class ManifestRecord(BaseModel):
 
     @property
     def counts_for_disfluency_metrics(self) -> bool:
-        return self.reference_quality in ("gold", "silver")
+        return self.reference_quality in ("gold", "adjudicated", "silver")
 
     @property
     def is_private(self) -> bool:
@@ -79,11 +90,23 @@ class ManifestReport:
         quality: dict[str, int] = defaultdict(int)
         for r in self.records:
             quality[r.reference_quality or "none"] += 1
-        refs = ", ".join(f"{quality[q]} {q}" for q in ("gold", "silver", "none") if quality[q])
+        refs = ", ".join(
+            f"{quality[q]} {q}" for q in ("gold", "adjudicated", "silver", "none") if quality[q]
+        )
         by_lang = ", ".join(f"{k} {v:.2f} h" for k, v in sorted(self.hours_by_lang().items()))
         return f"{len(self.records)} records (references: {refs})" + (
             f"; {by_lang}" if by_lang else ""
         )
+
+
+def check_free_training_sources(records: list[ManifestRecord]) -> list[str]:
+    """Errors for records that must not train ilat-free (decision 0009)."""
+    return [
+        f"{r.id}: derived from {src} ({NON_FREE_SOURCES[src]}): not allowed for ilat-free"
+        for r in records
+        for src in r.derived_from
+        if src in NON_FREE_SOURCES
+    ]
 
 
 def check_manifest(path: Path, root: Path, check_files: bool = False) -> ManifestReport:

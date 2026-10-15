@@ -125,3 +125,15 @@ def test_gold_and_silver_count_for_disfluency_metrics(tmp_path):
     assert report.errors == []
     assert [r.counts_for_disfluency_metrics for r in report.records] == [True, True, False]
     assert "references: 1 gold, 1 silver, 1 none" in report.summary()
+
+
+def test_adjudicated_quality_and_derived_from(tmp_path):
+    from ilat.manifest import check_free_training_sources
+
+    rec = record(reference_quality="adjudicated", derived_from=["crisperwhisper"])
+    report = check_manifest(write(tmp_path, rec, record(id="it-002")), tmp_path)
+    assert report.errors == []
+    assert report.records[0].counts_for_disfluency_metrics
+    assert "1 gold" in report.summary() and "1 adjudicated" in report.summary()
+    errors = check_free_training_sources(report.records)
+    assert len(errors) == 1 and errors[0].startswith("it-001: derived from crisperwhisper")
