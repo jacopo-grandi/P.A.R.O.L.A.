@@ -356,6 +356,12 @@ def cmd_adjudicate_apply(args) -> int:
         print(f"previous reference kept as {backup}")
     reference.save(ref_path)
     choices = Counter((answers.get(r.item_id) or {}).get("choice") or "A" for r in regions)
+    by_kind: dict[str, Counter] = {}
+    for r in regions:
+        if r.item_id in given and (given[r.item_id] or {}).get("choice"):
+            by_kind.setdefault(r.kind, Counter())[given[r.item_id]["choice"]] += 1
+    for kind, c in sorted(by_kind.items()):
+        print(f"listened {kind}: A {c['A']}, B {c['B']}, text {c['text']}")
     n_auto = sum(1 for r in regions if r.auto and r.item_id not in given)
     checks = ", ".join(f"{k} {a}/{t}" for k, (a, t) in sorted(agreement.items())) or "none"
     note = (f"Adjudicated {date.today().isoformat()}: {len(regions)} disagreements "
