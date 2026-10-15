@@ -34,9 +34,18 @@ from ilat.schema.vocab import split_punctuation
 MERGE_GAP_TOKENS = 1
 CONTEXT_WORDS = 6
 
-# What to do with each kind of disagreement (decided by Jacopo, 2026-10-15).
-AUTO_KINDS = {"repetition", "truncated", "superset"}  # accept B
-SAMPLED_KINDS = {"insertion", "filler"}  # accept B, listen to one in CHECK_EVERY
+# What to do with each kind of disagreement (decided by Jacopo, 2026-10-15), depending on which
+# side is the verbatim system (CrisperWhisper): it is right when it has *more* repetitions,
+# truncations and fillers than the other side.
+POLICY = {
+    # base = reference, other (B) = CrisperWhisper
+    "B": {"auto": {"repetition", "truncated", "superset"}, "sampled": {"insertion", "filler"}},
+    # base (A) = CrisperWhisper draft, other = Whisper turbo
+    "A": {"auto": {"deleted_repetition", "deleted_truncated", "subset"},
+          "sampled": {"deleted_filler"}},
+}  # fmt: skip
+AUTO_KINDS = POLICY["B"]["auto"] | POLICY["A"]["auto"]
+SAMPLED_KINDS = POLICY["B"]["sampled"] | POLICY["A"]["sampled"]
 CHECK_EVERY = 6
 # A sampled kind whose checks agree with B less than this goes back to listening.
 MIN_RULE_AGREEMENT = 0.9
@@ -48,6 +57,9 @@ KIND_LABELS = {
     "filler": "B aggiunge un'esitazione",
     "substitution": "parole diverse",
     "deletion": "B toglie parole",
+    "deleted_filler": "B toglie un'esitazione",
+    "deleted_repetition": "B toglie una ripetizione",
+    "deleted_truncated": "B toglie una troncata",
     "subset": "B = A con parole in meno",
 }
 
@@ -85,17 +97,24 @@ def classify(base_text: str, other_texts: list[str], before: str, after: str, la
         return [t for w in words for t in split_word(w, lang)]
 
     a, b = norm(base_text.split()), norm(other_texts)
-    if not a:
-        if b and all(canonical_filler(t, lang) for t in b):
+    context = norm(before.split()[-2:] + after.split()[:2])
+
+    def extra(words: list[str]) -> str:
+        """What kind of words one side has and the other lacks."""
+        if words and all(canonical_filler(t, lang) for t in words):
             return "filler"
-        if any(t.endswith("-") for t in b):
+        if any(t.endswith("-") for t in words):
             return "truncated"
-        context = norm(before.split()[-2:] + after.split()[:2])
-        if b and all(t in context for t in b):
+        if words and all(t in context for t in words):
             return "repetition"
-        return "insertion"
+        return "other"
+
+    if not a:
+        kind = extra(b)
+        return "insertion" if kind == "other" else kind
     if not b:
-        return "deletion"
+        kind = extra(a)
+        return "deletion" if kind == "other" else f"deleted_{kind}"
 
     def contains(longer: list[str], shorter: list[str]) -> bool:
         it = iter(longer)
@@ -109,15 +128,19 @@ def classify(base_text: str, other_texts: list[str], before: str, after: str, la
 
 
 def apply_policy(
-    regions: list[Region], listen: set[str] = frozenset(), seed: int = 0
+    regions: list[Region], listen: set[str] = frozenset(), seed: int = 0, verbatim_side: str = "B"
 ) -> list[Region]:
-    """Set ``auto`` and ``check`` on each region; kinds in ``listen`` are always listened."""
+    """Set ``auto`` and ``check`` on each region; kinds in ``listen`` are always listened.
+
+    ``verbatim_side`` is the side produced by CrisperWhisper: its choice is taken
+    automatically for the kinds of POLICY[verbatim_side]."""
     rng = random.Random(seed)
+    policy = POLICY[verbatim_side]
     for r in regions:
         r.auto, r.check = None, False
-        if r.kind in (AUTO_KINDS | SAMPLED_KINDS) - set(listen):
-            r.auto = "B"
-    for kind in sorted(SAMPLED_KINDS - set(listen)):
+        if r.kind in (policy["auto"] | policy["sampled"]) - set(listen):
+            r.auto = verbatim_side
+    for kind in sorted(policy["sampled"] - set(listen)):
         pool = [r for r in regions if r.kind == kind]
         for r in rng.sample(pool, math.ceil(len(pool) / CHECK_EVERY)):
             r.check = True
@@ -132,13 +155,13 @@ def merged_answers(regions: list[Region], answers: dict[str, dict]) -> dict[str,
 
 
 def rule_agreement(regions: list[Region], answers: dict[str, dict]) -> dict[str, tuple[int, int]]:
-    """Per sampled kind: (checks where the person also chose B, checks answered)."""
+    """Per sampled kind: (checks where the person made the automatic choice, checks answered)."""
     out: dict[str, tuple[int, int]] = {}
     for r in regions:
         choice = (answers.get(r.item_id) or {}).get("choice")
         if r.check and choice:
             agree, total = out.get(r.kind, (0, 0))
-            out[r.kind] = (agree + (choice == "B"), total + 1)
+            out[r.kind] = (agree + (choice == r.auto), total + 1)
     return out
 
 

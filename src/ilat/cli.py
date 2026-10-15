@@ -303,7 +303,11 @@ def cmd_adjudicate_build(args) -> int:
         other = Transcript.load(args.hyp_dir / TURBO / f"{stem}.json")
         labels = ("CrisperWhisper", "Whisper turbo")
     listen = {k.strip() for k in args.listen.split(",") if k.strip()}
-    regions = adjudicate.apply_policy(adjudicate.find_regions(base, other), listen=listen)
+    regions = adjudicate.apply_policy(
+        adjudicate.find_regions(base, other),
+        listen=listen,
+        verbatim_side="B" if record.reference else "A",
+    )
     out = args.out or Path("data/private/adjudicate") / args.id
     out.mkdir(parents=True, exist_ok=True)
     base.save(out / "base.json")
@@ -327,7 +331,7 @@ def cmd_adjudicate_apply(args) -> int:
     agreement = adjudicate.rule_agreement(regions, given)
     failed = []
     for kind, (agree, total) in sorted(agreement.items()):
-        print(f"rule check {kind}: {agree}/{total} agree with B")
+        print(f"rule check {kind}: {agree}/{total} agree with the rule")
         if total >= 3 and agree / total < adjudicate.MIN_RULE_AGREEMENT:
             failed.append(kind)
     if failed and not args.accept_anyway:

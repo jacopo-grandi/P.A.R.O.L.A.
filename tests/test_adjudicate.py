@@ -134,6 +134,9 @@ import pytest  # noqa: E402
         ("dovrei dovrei", ["dovrei"], "però", "vedere", "subset"),
         ("lunedì", ["martedì"], "parte", "e", "substitution"),
         ("tutto", [], "vediamo", "il", "deletion"),
+        ("ehm,", [], "allora", "andiamo", "deleted_filler"),
+        ("il", [], "il", "progetto", "deleted_repetition"),
+        ("pr-", [], "nel", "insomma", "deleted_truncated"),
     ],
 )
 def test_classify(base_text, other, before, after, kind):
@@ -179,3 +182,13 @@ def test_rebuilt_page_keeps_storage_key_and_old_answers(tmp_path):
     shown = text.count("<section ")
     assert shown == sum(1 for r in regions if r.auto is None or r.check)
     assert len(adjudicate.load_regions(tmp_path)) == 3
+
+
+def test_policy_mirrored_when_base_is_the_verbatim_draft():
+    regions = [_region("R1", "deleted_repetition"), _region("F1", "deleted_filler"),
+               _region("D1", "deletion"), _region("S1", "superset")]  # fmt: skip
+    adjudicate.apply_policy(regions, verbatim_side="A")
+    by = {r.item_id: r for r in regions}
+    assert by["R1"].auto == "A" and not by["R1"].check
+    assert by["F1"].auto == "A" and by["F1"].check  # one in six, rounded up
+    assert by["D1"].auto is None and by["S1"].auto is None
