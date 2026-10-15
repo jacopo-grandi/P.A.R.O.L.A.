@@ -8,12 +8,19 @@ reference (docs/conventions.md §4, decision 0009).
 ``base`` is the transcript being corrected (a reference, or a draft); ``other`` is the second
 opinion. Every region where they differ becomes an item: keep A (base), take B (other), or
 type the right text.
+
+Disagreements fall into a few kinds (``classify``). Where the listening audit showed that
+CrisperWhisper is right (it keeps repetitions, truncations and extra words that turbo drops,
+results/2026-10-15-audit-crisper.md), B is accepted automatically; for less certain kinds a
+sample is listened to as a check of the rule; substitutions and deletions are always listened.
 """
 
 from __future__ import annotations
 
 import html
 import json
+import math
+import random
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -26,6 +33,23 @@ from ilat.schema.vocab import split_punctuation
 # Disagreements separated by at most this many agreeing tokens form one item.
 MERGE_GAP_TOKENS = 1
 CONTEXT_WORDS = 6
+
+# What to do with each kind of disagreement (decided by Jacopo, 2026-10-15).
+AUTO_KINDS = {"repetition", "truncated", "superset"}  # accept B
+SAMPLED_KINDS = {"insertion", "filler"}  # accept B, listen to one in CHECK_EVERY
+CHECK_EVERY = 6
+# A sampled kind whose checks agree with B less than this goes back to listening.
+MIN_RULE_AGREEMENT = 0.9
+KIND_LABELS = {
+    "repetition": "B aggiunge una ripetizione",
+    "truncated": "B aggiunge una troncata",
+    "superset": "B = A con parole in più",
+    "insertion": "B aggiunge parole",
+    "filler": "B aggiunge un'esitazione",
+    "substitution": "parole diverse",
+    "deletion": "B toglie parole",
+    "subset": "B = A con parole in meno",
+}
 
 
 @dataclass
@@ -42,10 +66,80 @@ class Region:
     end: float
     before: str
     after: str
+    lang: str = "it"
+    kind: str = ""
+    # "B" when the rule accepts the other side without listening.
+    auto: str | None = None
+    # Auto-accepted item shown anyway, as a sample check of the rule.
+    check: bool = False
     other_text: str = field(init=False)
 
     def __post_init__(self) -> None:
         self.other_text = " ".join(self.other_texts)
+
+
+def classify(base_text: str, other_texts: list[str], before: str, after: str, lang: str) -> str:
+    """Kind of a disagreement, from the point of view of B (the other side)."""
+
+    def norm(words: list[str]) -> list[str]:
+        return [t for w in words for t in split_word(w, lang)]
+
+    a, b = norm(base_text.split()), norm(other_texts)
+    if not a:
+        if b and all(canonical_filler(t, lang) for t in b):
+            return "filler"
+        if any(t.endswith("-") for t in b):
+            return "truncated"
+        context = norm(before.split()[-2:] + after.split()[:2])
+        if b and all(t in context for t in b):
+            return "repetition"
+        return "insertion"
+    if not b:
+        return "deletion"
+
+    def contains(longer: list[str], shorter: list[str]) -> bool:
+        it = iter(longer)
+        return all(t in it for t in shorter)
+
+    if len(b) > len(a) and contains(b, a):
+        return "superset"
+    if len(a) > len(b) and contains(a, b):
+        return "subset"
+    return "substitution"
+
+
+def apply_policy(
+    regions: list[Region], listen: set[str] = frozenset(), seed: int = 0
+) -> list[Region]:
+    """Set ``auto`` and ``check`` on each region; kinds in ``listen`` are always listened."""
+    rng = random.Random(seed)
+    for r in regions:
+        r.auto, r.check = None, False
+        if r.kind in (AUTO_KINDS | SAMPLED_KINDS) - set(listen):
+            r.auto = "B"
+    for kind in sorted(SAMPLED_KINDS - set(listen)):
+        pool = [r for r in regions if r.kind == kind]
+        for r in rng.sample(pool, math.ceil(len(pool) / CHECK_EVERY)):
+            r.check = True
+    return regions
+
+
+def merged_answers(regions: list[Region], answers: dict[str, dict]) -> dict[str, dict]:
+    """Automatic choices, overridden by every explicit answer."""
+    merged = {r.item_id: {"choice": r.auto} for r in regions if r.auto}
+    merged.update({k: v for k, v in answers.items() if v and v.get("choice")})
+    return merged
+
+
+def rule_agreement(regions: list[Region], answers: dict[str, dict]) -> dict[str, tuple[int, int]]:
+    """Per sampled kind: (checks where the person also chose B, checks answered)."""
+    out: dict[str, tuple[int, int]] = {}
+    for r in regions:
+        choice = (answers.get(r.item_id) or {}).get("choice")
+        if r.check and choice:
+            agree, total = out.get(r.kind, (0, 0))
+            out[r.kind] = (agree + (choice == "B"), total + 1)
+    return out
 
 
 def _side(t: Transcript) -> str:
@@ -111,10 +205,12 @@ def find_regions(base: Transcript, other: Transcript) -> list[Region]:
                     end=end,
                     before=" ".join(w.text for w in seg.words[max(0, lo - CONTEXT_WORDS) : lo]),
                     after=" ".join(w.text for w in seg.words[hi : hi + CONTEXT_WORDS]),
+                    lang=lang,
                 )
             )
     for k, r in enumerate(regions, start=1):
         r.item_id = f"D{k:03d}"
+        r.kind = classify(r.base_text, r.other_texts, r.before, r.after, r.lang)
     return regions
 
 
@@ -165,12 +261,22 @@ def apply(base: Transcript, regions: list[Region], answers: dict[str, dict]) -> 
 
 
 def write_page(regions: list[Region], file_id: str, labels: tuple[str, str], out_dir: Path) -> Path:
+    """Page with the items to listen to: those without an automatic choice, plus the checks.
+    All regions are saved in regions.json; answers are keyed by item id, so a rebuilt page
+    keeps the answers already given."""
+    shown = [r for r in regions if r.auto is None or r.check]
+    n_auto = sum(1 for r in regions if r.auto and not r.check)
     rows = []
-    for r in regions:
+    for r in shown:
+        tag = (
+            f'<span class="chk">controllo a campione · {KIND_LABELS.get(r.kind, r.kind)}</span>'
+            if r.check
+            else f'<span class="kind">{KIND_LABELS.get(r.kind, r.kind)}</span>'
+        )
         src = _audio_src(out_dir / "clips" / f"{r.item_id}.m4a")
         rows.append(f"""
 <section id="{r.item_id}" data-id="{r.item_id}">
-  <h2>{r.item_id} · {format_timestamp(r.start)[3:]}</h2>
+  <h2>{r.item_id} · {format_timestamp(r.start)[3:]} · {tag}</h2>
   <audio controls preload="none" src="{src}"></audio>
   <p class="opt"><label><input type="radio" name="{r.item_id}" value="A"> <kbd>1</kbd>
     <b>A</b> <span class="ctx">{html.escape(r.before)}</span>
@@ -184,7 +290,7 @@ def write_page(regions: list[Region], file_id: str, labels: tuple[str, str], out
     altro: <input type="text" class="txt" data-id="{r.item_id}"
     placeholder="testo giusto al posto della parte evidenziata (vuoto = niente)"></label></p>
 </section>""")
-    data = json.dumps([asdict(r) for r in regions], ensure_ascii=False)
+    data = json.dumps([asdict(r) for r in shown], ensure_ascii=False)
     a_label, b_label = (html.escape(x) for x in labels)
     page = f"""<!doctype html>
 <html lang="it"><head><meta charset="utf-8">
@@ -202,6 +308,7 @@ section {{ background:var(--card); border:2px solid var(--line); border-radius:1
            padding:10px 14px; margin:10px 0; }}
 section.cur {{ border-color:var(--cur); }} section.done {{ opacity:.6; }}
 h2 {{ font-size:14px; margin:0 0 4px; color:var(--muted); }}
+.chk {{ color:var(--cur); }} .kind {{ font-weight:normal; }}
 .opt {{ margin:4px 0; }} .ctx {{ color:var(--muted); }}
 mark {{ background:var(--mark); color:inherit; padding:0 3px; }}
 kbd {{ font-size:12px; border:1px solid var(--line); border-radius:4px; padding:0 4px; }}
@@ -216,11 +323,15 @@ header {{ position:sticky; top:0; background:var(--bg); padding:8px 0; z-index:1
 <kbd>1</kbd> A, <kbd>2</kbd> B, <kbd>3</kbd> scrivi tu,
 <kbd>↓</kbd>/<kbd>↑</kbd> successiva/precedente.
 Dopo una scelta passa da sola alla successiva. Le risposte restano in questo browser finché non le
-esporti; senza risposta vale A.</p>
+esporti; senza risposta vale A. Altre {n_auto} divergenze sono accettate in automatico (B) dalla
+regola: ripetizioni, troncate, parole in più. Quelle marcate "controllo a campione" servono a
+verificare la regola: rispondi come per le altre.</p>
 {"".join(rows)}
 <script>
 const ITEMS = {data};
-const KEY = "ilat-adjudicate-" + {json.dumps(file_id)} + "-" + ITEMS.length;
+// Keyed by the total number of regions, not of shown items: rebuilding the page with a
+// different rule keeps the answers already given.
+const KEY = "ilat-adjudicate-" + {json.dumps(file_id)} + "-" + {len(regions)};
 let state = {{}};
 try {{ state = JSON.parse(localStorage.getItem(KEY) || "{{}}"); }} catch (e) {{}}
 const sections = [...document.querySelectorAll("section")];
@@ -273,6 +384,8 @@ document.addEventListener("keydown", e => {{
 document.getElementById("export").addEventListener("click", () => {{
   const answers = {{}};
   for (const i of ITEMS) answers[i.item_id] = state[i.item_id] || {{}};
+  // Also answers to items no longer shown (given before a rule change).
+  for (const [k, v] of Object.entries(state)) if (!(k in answers)) answers[k] = v;
   const blob = new Blob([JSON.stringify({{file_id: {json.dumps(file_id)}, answers}}, null, 2)],
                         {{type: "application/json"}});
   const a = document.createElement("a");
@@ -284,7 +397,8 @@ save(); focusItem(0, false);
 """
     path = out_dir / "index.html"
     path.write_text(page, encoding="utf-8")
-    (out_dir / "regions.json").write_text(data + "\n", encoding="utf-8")
+    all_regions = json.dumps([asdict(r) for r in regions], ensure_ascii=False)
+    (out_dir / "regions.json").write_text(all_regions + "\n", encoding="utf-8")
     return path
 
 
@@ -292,7 +406,8 @@ def build(regions: list[Region], audio: Path, file_id: str, labels: tuple[str, s
           out_dir: Path) -> Path:  # fmt: skip
     (out_dir / "clips").mkdir(parents=True, exist_ok=True)
     for r in regions:
-        cut_clip(audio, r.start, r.end, out_dir / "clips" / f"{r.item_id}.m4a")
+        if r.auto is None or r.check:
+            cut_clip(audio, r.start, r.end, out_dir / "clips" / f"{r.item_id}.m4a")
     return write_page(regions, file_id, labels, out_dir)
 
 

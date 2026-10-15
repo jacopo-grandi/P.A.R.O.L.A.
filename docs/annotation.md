@@ -89,5 +89,6 @@ uv run ilat adjudicate apply it-002 ~/Downloads/adjudication-it-002.json
 ```
 
 - Se il file ha già un riferimento, si confronta quello (A) con CrisperWhisper (B). Altrimenti si parte da CrisperWhisper (A) e lo si confronta con Whisper turbo (B).
+- **Regola automatica** (Jacopo, 2026-10-15): le divergenze in cui CrisperWhisper aggiunge una ripetizione, una troncata o parole in più al testo di A sono accettate (B) senza ascolto. Le aggiunte di altre parole e di esitazioni sono accettate con un controllo a campione (una su sei), mentre le sostituzioni e le parole tolte si ascoltano sempre. Se un controllo dà meno del 90% di accordo con B, `apply` si ferma: si rigenera con `--listen <tipo>` e le risposte già date restano.
 - Per ogni divergenza: <kbd>spazio</kbd> riascolta, <kbd>1</kbd> A, <kbd>2</kbd> B, <kbd>3</kbd> scrivi il testo giusto. Senza risposta vale A.
 - `apply` scrive `<id>.ref.json` (il riferimento precedente resta come `<id>.ref.<qualità>.json`) e aggiorna il manifest: `reference_quality: adjudicated` e `derived_from: ["crisperwhisper"]`. Le esitazioni prese da CrisperWhisper sono ricondotte all'inventario della lingua (`um` → `ehm` in italiano).

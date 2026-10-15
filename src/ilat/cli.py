@@ -118,12 +118,21 @@ def build_parser() -> argparse.ArgumentParser:
     adb.add_argument("--root", type=Path, default=Path("."))
     adb.add_argument("--hyp-dir", type=Path, default=Path("data/private/hyp"))
     adb.add_argument("--out", type=Path, default=None, help="default: data/private/adjudicate/<id>")
+    adb.add_argument(
+        "--listen",
+        default="",
+        help="comma-separated kinds to always listen to instead of accepting them "
+        f"automatically ({', '.join(sorted(adjudicate.AUTO_KINDS | adjudicate.SAMPLED_KINDS))})",
+    )
     ada = adsub.add_parser("apply", help="apply exported answers and update the manifest")
     ada.add_argument("id")
     ada.add_argument("answers", type=Path)
     ada.add_argument("--manifest", type=Path, default=Path("data/manifests/test.jsonl"))
     ada.add_argument("--root", type=Path, default=Path("."))
     ada.add_argument("--dir", type=Path, default=None, help="default: data/private/adjudicate/<id>")
+    ada.add_argument(
+        "--accept-anyway", action="store_true", help="apply even if a rule check fails"
+    )
     return parser
 
 
@@ -293,13 +302,18 @@ def cmd_adjudicate_build(args) -> int:
         base = merge_segments(crisper)
         other = Transcript.load(args.hyp_dir / TURBO / f"{stem}.json")
         labels = ("CrisperWhisper", "Whisper turbo")
-    regions = adjudicate.find_regions(base, other)
+    listen = {k.strip() for k in args.listen.split(",") if k.strip()}
+    regions = adjudicate.apply_policy(adjudicate.find_regions(base, other), listen=listen)
     out = args.out or Path("data/private/adjudicate") / args.id
     out.mkdir(parents=True, exist_ok=True)
     base.save(out / "base.json")
     page = adjudicate.build(regions, args.root / record.audio, args.id, labels, out)
     words = sum(len(s.words) for s in base.segments)
-    print(f"{len(regions)} disagreements over {words} words")
+    kinds = Counter(r.kind for r in regions)
+    shown = sum(1 for r in regions if r.auto is None or r.check)
+    print(f"{len(regions)} disagreements over {words} words: {dict(kinds.most_common())}")
+    print(f"to listen: {shown} ({sum(r.check for r in regions)} rule checks); "
+          f"accepted automatically: {len(regions) - shown}")  # fmt: skip
     print(f"wrote {page}")
     return 0
 
@@ -309,7 +323,18 @@ def cmd_adjudicate_apply(args) -> int:
     work = args.dir or Path("data/private/adjudicate") / args.id
     base = Transcript.load(work / "base.json")
     regions = adjudicate.load_regions(work)
-    answers = json.loads(args.answers.read_text(encoding="utf-8"))["answers"]
+    given = json.loads(args.answers.read_text(encoding="utf-8"))["answers"]
+    agreement = adjudicate.rule_agreement(regions, given)
+    failed = []
+    for kind, (agree, total) in sorted(agreement.items()):
+        print(f"rule check {kind}: {agree}/{total} agree with B")
+        if total >= 3 and agree / total < adjudicate.MIN_RULE_AGREEMENT:
+            failed.append(kind)
+    if failed and not args.accept_anyway:
+        print(f"rule checks failed for {failed}: rebuild with --listen {','.join(failed)} "
+              "(answers are kept) or pass --accept-anyway", file=sys.stderr)  # fmt: skip
+        return 1
+    answers = adjudicate.merged_answers(regions, given)
     result = adjudicate.apply(base, regions, answers)
     if base.metadata.kind == "reference":
         text = to_annotation(result)
@@ -331,8 +356,11 @@ def cmd_adjudicate_apply(args) -> int:
         print(f"previous reference kept as {backup}")
     reference.save(ref_path)
     choices = Counter((answers.get(r.item_id) or {}).get("choice") or "A" for r in regions)
-    note = (f"Adjudicated {date.today().isoformat()}: {len(regions)} disagreements decided by "
-            f"listening (A {choices['A']}, B {choices['B']}, text {choices['text']}).")  # fmt: skip
+    n_auto = sum(1 for r in regions if r.auto and r.item_id not in given)
+    checks = ", ".join(f"{k} {a}/{t}" for k, (a, t) in sorted(agreement.items())) or "none"
+    note = (f"Adjudicated {date.today().isoformat()}: {len(regions)} disagreements "
+            f"(A {choices['A']}, B {choices['B']}, text {choices['text']}; "
+            f"{n_auto} accepted by rule, checks: {checks}).")  # fmt: skip
     lines = args.manifest.read_text(encoding="utf-8").splitlines()
     out_lines = []
     for line in lines:

@@ -118,3 +118,64 @@ def test_fillers_from_other_side_follow_the_language_inventory():
     out = adjudicate.apply(base, [r], {r.item_id: {"choice": "B"}})
     assert out.segments[0].text == "allora ehm, andiamo"
     assert [i for i in lint(out) if i.severity == "error"] == []
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("base_text", "other", "before", "after", "kind"),
+    [
+        ("", ["il"], "allora il", "progetto", "repetition"),
+        ("", ["pr-"], "nel", "insomma", "truncated"),
+        ("", ["um,"], "allora", "andiamo", "filler"),
+        ("", ["tecnici"], "qua", "ok", "insertion"),
+        ("parte", ["parte", "parte"], "il", "lunedì", "superset"),
+        ("dovrei dovrei", ["dovrei"], "però", "vedere", "subset"),
+        ("lunedì", ["martedì"], "parte", "e", "substitution"),
+        ("tutto", [], "vediamo", "il", "deletion"),
+    ],
+)
+def test_classify(base_text, other, before, after, kind):
+    assert adjudicate.classify(base_text, other, before, after, "it") == kind
+
+
+def _region(item_id, kind):
+    return adjudicate.Region(item_id, 0, 0, 0, "", ["x"], [(0.0, 1.0)], 0.0, 1.0, "", "",
+                             kind=kind)  # fmt: skip
+
+
+def test_policy_auto_sampled_and_listened():
+    regions = ([_region(f"R{k}", "repetition") for k in range(4)]
+               + [_region(f"I{k}", "insertion") for k in range(12)]
+               + [_region(f"S{k}", "substitution") for k in range(3)])  # fmt: skip
+    adjudicate.apply_policy(regions, seed=0)
+    by = {r.item_id: r for r in regions}
+    assert all(by[f"R{k}"].auto == "B" and not by[f"R{k}"].check for k in range(4))
+    assert all(by[f"I{k}"].auto == "B" for k in range(12))
+    assert sum(by[f"I{k}"].check for k in range(12)) == 2  # one in six
+    assert all(by[f"S{k}"].auto is None for k in range(3))
+    adjudicate.apply_policy(regions, listen={"insertion"})
+    assert all(by[f"I{k}"].auto is None and not by[f"I{k}"].check for k in range(12))
+
+
+def test_explicit_answers_override_the_rule_and_agreement():
+    regions = [_region("A1", "repetition"), _region("A2", "insertion"),
+               _region("A3", "substitution")]  # fmt: skip
+    regions[1].auto, regions[1].check = "B", True
+    regions[0].auto = "B"
+    merged = adjudicate.merged_answers(regions, {"A1": {"choice": "A"}, "A3": {}})
+    assert merged == {"A1": {"choice": "A"}, "A2": {"choice": "B"}}
+    assert adjudicate.rule_agreement(regions, {"A2": {"choice": "A"}}) == {"insertion": (0, 1)}
+
+
+def test_rebuilt_page_keeps_storage_key_and_old_answers(tmp_path):
+    regions = adjudicate.find_regions(BASE, OTHER)
+    adjudicate.apply_policy(regions)
+    text = adjudicate.write_page(regions, "it-002", ("a", "b"), tmp_path).read_text()
+    # The key uses all regions (3), not only the shown ones.
+    assert '"ilat-adjudicate-" + "it-002" + "-" + 3' in text
+    assert "Object.entries(state)" in text  # export includes answers to hidden items
+    shown = text.count("<section ")
+    assert shown == sum(1 for r in regions if r.auto is None or r.check)
+    assert len(adjudicate.load_regions(tmp_path)) == 3
