@@ -183,3 +183,4 @@ def test_glued_truncation_is_a_warning():
     assert [i.severity for i in issues] == ["warning"]
     assert "'fi- fissi'" in issues[0].message
     assert lint(ref(seg(W("e-mail")))) == []
+    assert lint(ref(seg(W("Bye-bye.", lang="en"), lang="en"))) == []

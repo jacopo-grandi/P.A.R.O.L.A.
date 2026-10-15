@@ -132,7 +132,7 @@ def _lint_word(w: Word, seg: Segment) -> list[tuple[Literal["error", "warning"],
     if "truncated" in tags and not truncated_form:
         out.append(("error", "truncated word must end with '-'"))
     head, sep, tail = core(text).partition("-")
-    if sep and head and tail.startswith(head):
+    if sep and head and tail.startswith(head) and tail != head:
         out.append(("warning", f"{text!r} looks like a truncation: write it as '{head}- {tail}'"))
 
     # Fillers come from the closed inventory of their language.
