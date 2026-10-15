@@ -104,9 +104,9 @@ def test_tokenize_ref_literal():
     ]  # fmt: skip
 
 
-def test_tokenize_ref_classic():
+def test_tokenize_ref_fidelity():
     # Tagged disfluencies dropped, then immediate repeats collapsed ("sì sì" -> "sì").
-    assert texts(tokenize(REF, "it", "classic", "ref")) == ["il", "progetto", "martedì", "sì"]
+    assert texts(tokenize(REF, "it", "fidelity", "ref")) == ["il", "progetto", "martedì", "sì"]
 
 
 def test_tokenize_ref_verbatim():
@@ -119,7 +119,7 @@ def test_tokenize_ref_verbatim():
 def test_tokenize_hyp_recognises_fillers_and_truncations():
     hyp = [H("Uhm,"), H("il"), H("propo-"), H("progetto"), H("eh?"), H("[Music]"), H("Mmm.")]
     assert texts(tokenize(hyp, "it", "literal", "hyp")) == ["il", "propo-", "progetto", "eh"]
-    assert texts(tokenize(hyp, "it", "classic", "hyp")) == ["il", "progetto", "eh"]
+    assert texts(tokenize(hyp, "it", "fidelity", "hyp")) == ["il", "progetto", "eh"]
     verbatim = tokenize(hyp, "it", "verbatim", "hyp")
     assert texts(verbatim) == ["ehm", "il", "propo-", "progetto", "eh", "mh"]
     assert [t.is_filler for t in verbatim] == [True, False, False, False, False, True]
@@ -227,8 +227,8 @@ def test_score_transcript_end_to_end():
     # literal: ref "ci vediamo lunedì no martedì" + "va bene", hyp drops "lunedì no";
     # the hypothesis filler "eh" is removed by the literal metric.
     assert wer_of(scores, "literal") == pytest.approx(2 / 7)
-    # classic: ref "ci vediamo martedì" + "va bene" -> perfect.
-    assert wer_of(scores, "classic") == 0
+    # fidelity: ref "ci vediamo martedì" + "va bene" -> perfect.
+    assert wer_of(scores, "fidelity") == 0
     # verbatim: ref has 8 tokens ("ehm" + 5 + "va bene"); errors: ehm, lunedì, no
     # deleted, "eh" inserted.
     assert wer_of(scores, "verbatim") == pytest.approx(4 / 8)
@@ -241,11 +241,11 @@ def test_score_transcript_end_to_end():
 def test_bootstrap_ci_brackets_point_estimate_and_is_reproducible():
     scores = [
         SegmentScore("it", {m: Counts(hits=9, substitutions=1) for m in
-                            ("literal", "classic", "verbatim")}, None)
+                            ("fidelity", "literal", "verbatim")}, None)
         for _ in range(5)
     ] + [
         SegmentScore("it", {m: Counts(hits=5, deletions=5) for m in
-                            ("literal", "classic", "verbatim")}, None)
+                            ("fidelity", "literal", "verbatim")}, None)
         for _ in range(5)
     ]  # fmt: skip
     point = wer_of(scores, "literal")
@@ -287,6 +287,7 @@ def test_score_system_and_report(tmp_path):
     assert all_row["rtf"] == pytest.approx(0.05)
     md, csv_path = write_report(rows, [system], [record], tmp_path / "results" / "r")
     text = md.read_text()
-    assert "| `turbo` | all | 33.3 [" in text
+    assert "| `turbo` | all | **33.3 [" in text  # fidelity: "a" deleted
+    assert all_row["fidelity_del"] == 1 and all_row["fidelity_sub"] == 0
     assert "it-001 (it, 2 min, silver)" in text
-    assert csv_path.read_text().splitlines()[0].startswith("system,scope,literal,")
+    assert csv_path.read_text().splitlines()[0].startswith("system,scope,fidelity,")

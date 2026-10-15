@@ -1,5 +1,7 @@
 # Baseline del 2026-10-15 — analisi
 
+> **Aggiornamento:** la metrica principale ora è il **WER di fedeltà** ([decisione 0010](../docs/decisions/0010-fidelity-metric.md)), cioè l'ex "WER classico" con gli stessi valori. Sui riferimenti silver: turbo 3,3% (1,4% di sostituzioni), CrisperWhisper 9,1% (2,8%), Parakeet 14,1% (4,9%). Quei riferimenti partono da turbo: i numeri definitivi arriveranno con i riferimenti `adjudicated`. Le tabelle qui sotto usano ancora il WER letterale, metrica principale fino a 0010.
+
 Riferimenti: it-002 (16 min) ed en-002 (29 min), entrambi `silver`. Report completi: [seme 0](2026-10-15-baseline.md), [seme 1](2026-10-15-baseline-seed1.md), [seme 2](2026-10-15-baseline-seed2.md).
 
 ## WER letterale (metrica principale) al variare del seme

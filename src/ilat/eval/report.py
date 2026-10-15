@@ -12,14 +12,22 @@ from datetime import date
 from pathlib import Path
 
 from ilat.asr.mlx_whisper_backend import SEED
-from ilat.eval.metrics import DISFLUENCY_TAGS, SegmentScore, bootstrap_ci, score_transcript, wer_of
+from ilat.eval.metrics import (
+    DISFLUENCY_TAGS,
+    Counts,
+    SegmentScore,
+    bootstrap_ci,
+    score_transcript,
+    wer_of,
+)
 from ilat.eval.normalize import METRICS
 from ilat.eval.systems import System
 from ilat.manifest import ManifestRecord
 from ilat.pipeline import transcribe_file
 from ilat.schema import Transcript
 
-METRIC_LABELS = {"literal": "WER letterale", "classic": "WER classico", "verbatim": "WER verbatim"}
+METRIC_LABELS = {"fidelity": "WER di fedeltà", "literal": "WER letterale",
+                 "verbatim": "WER verbatim"}  # fmt: skip
 
 
 def run_system(
@@ -64,6 +72,11 @@ def _scope_rows(system: str, scope: str, scores: list[SegmentScore], seconds: fl
         v[m] = wer_of(scores, m)
         ci = bootstrap_ci(scores, m)
         v[f"{m}_lo"], v[f"{m}_hi"] = ci if ci else (None, None)
+    # Error types of the primary metric: substitutions are the direct sign of rewriting.
+    f = sum((s.wer["fidelity"] for s in scores), Counts())
+    v["fidelity_ref_words"] = f.ref_words
+    v["fidelity_sub"], v["fidelity_del"], v["fidelity_ins"] = (f.substitutions, f.deletions,
+                                                               f.insertions)  # fmt: skip
     d = sum((s.disfluency for s in scores[1:]), scores[0].disfluency) if scores else None
     for tag in DISFLUENCY_TAGS:
         v[f"{tag}_ref"] = d.ref[tag] if d else 0
@@ -109,6 +122,10 @@ def _pct(v: float | None) -> str:
     return "—" if v is None else f"{v * 100:.1f}"
 
 
+def _ratio(a: float | None, b: float | None) -> float | None:
+    return a / b if a is not None and b else None
+
+
 def _wer_cell(row: Row, m: str) -> str:
     v, lo, hi = row.values[m], row.values[f"{m}_lo"], row.values[f"{m}_hi"]
     return "—" if v is None else f"{_pct(v)} [{_pct(lo)}-{_pct(hi)}]"
@@ -151,14 +168,16 @@ def write_report(
         "",
         "## Risultati",
         "",
-        "| Sistema | Ambito | WER letterale | WER classico | WER verbatim | Filler recall | "
-        "Filler precision | RTF |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Sistema | Ambito | **WER di fedeltà** | sost. | WER letterale | WER verbatim | "
+        "Filler recall | Filler precision | RTF |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         rtf = r.values["rtf"]
         lines.append(
-            f"| `{r.system}` | {r.scope} | {_wer_cell(r, 'literal')} | {_wer_cell(r, 'classic')} | "
+            f"| `{r.system}` | {r.scope} | **{_wer_cell(r, 'fidelity')}** | "
+            f"{_pct(_ratio(r.values['fidelity_sub'], r.values['fidelity_ref_words']))} | "
+            f"{_wer_cell(r, 'literal')} | "
             f"{_wer_cell(r, 'verbatim')} | {_pct(r.values['filler_recall'])} | "
             f"{_pct(r.values['filler_precision'])} | {'—' if rtf is None else f'{rtf:.3f}'} |"
         )
@@ -178,8 +197,11 @@ def write_report(
         "",
         "## Come leggere i numeri",
         "",
-        "- **WER letterale** è la metrica principale (decisione 0007): tolte solo le esitazioni, "
-        "tutto il resto conta parola per parola.",
+        "- **WER di fedeltà** è la metrica principale (decisione 0010): conta se le parole sono "
+        "quelle dette, senza riscritture; esitazioni, ripetizioni, troncate e false partenze "
+        "non contano. **sost.** = sostituzioni in % delle parole: il segnale diretto di "
+        "reinterpretazione.",
+        "- **WER letterale**: tolte solo le esitazioni; ripetizioni e troncate contano.",
         "- **RTF**: tempo di elaborazione / durata dell'audio, sul Mac (M4 Pro).",
         "- **Riproducibilità**: seme casuale MLX fisso (0). Il temperature fallback di Whisper "
         "campiona a caso: senza seme due run dello stesso sistema danno numeri diversi.",

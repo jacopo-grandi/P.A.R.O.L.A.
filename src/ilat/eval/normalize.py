@@ -3,10 +3,11 @@
 The same rules apply to reference and hypothesis, except that tags are known only on the
 reference: on the hypothesis, fillers and truncations are recognised from their form.
 
-- ``literal`` (primary metric, decision 0007): drop fillers; everything else is literal.
-- ``classic``: also drop truncations, repetitions, false starts and edit terms; collapse
-  immediate repeats (untagged repetitions in silver references, and all of them in the
-  hypothesis).
+- ``fidelity`` (primary metric, decision 0010): were the words said, as said? Drop fillers,
+  truncations, repetitions, false starts and edit terms; collapse immediate repeats
+  (untagged repetitions in silver references, and all of them in the hypothesis). Rewrites,
+  paraphrases and grammar "corrections" still count.
+- ``literal`` (decision 0007): drop only fillers; repetitions and truncations count.
 - ``verbatim``: keep fillers too, mapped to the canonical inventory form.
 
 Shared normalisation: lowercase, strip punctuation, split elisions after the apostrophe
@@ -25,8 +26,8 @@ from num2words import num2words
 from ilat.schema import Word
 from ilat.schema.vocab import INAUDIBLE, NONVERBAL
 
-Metric = Literal["literal", "classic", "verbatim"]
-METRICS: tuple[Metric, ...] = ("literal", "classic", "verbatim")
+Metric = Literal["fidelity", "literal", "verbatim"]
+METRICS: tuple[Metric, ...] = ("fidelity", "literal", "verbatim")
 
 # Spelling variants of filled pauses -> canonical form of docs/conventions.md §2.2.
 FILLER_FORMS = {
@@ -44,8 +45,8 @@ FILLER_FORMS = {
         **dict.fromkeys(["hmm", "hm", "mm", "mmm", "mh"], "hmm"),
     },
 }
-# Tags removed from the reference by the classic metric (§4).
-CLASSIC_DROPPED_TAGS = {"filler", "truncated", "repetition", "reduplication", "false_start",
+# Tags removed from the reference by the fidelity metric (§4).
+FIDELITY_DROPPED_TAGS = {"filler", "truncated", "repetition", "reduplication", "false_start",
                         "edit_term"}  # fmt: skip
 
 # Spelling variants that docs/conventions.md §2.9 treats as the same word.
@@ -134,13 +135,13 @@ def tokenize(
         # As in the annotation importer, "eh?" (interrogative) is not a filler.
         filler = "filler" in tags if side == "ref" else canonical is not None and "?" not in w.text
         truncated = "truncated" in tags if side == "ref" else parts[-1].endswith("-")
-        if filler and metric in ("literal", "classic"):
+        if filler and metric in ("fidelity", "literal"):
             continue
-        if metric == "classic" and (truncated or tags & CLASSIC_DROPPED_TAGS):
+        if metric == "fidelity" and (truncated or tags & FIDELITY_DROPPED_TAGS):
             continue
         if filler and canonical:
             parts = [canonical]
         tokens.extend(Token(p, i, tags, filler) for p in parts)
-    if metric == "classic":
+    if metric == "fidelity":
         tokens = [t for k, t in enumerate(tokens) if k == 0 or t.text != tokens[k - 1].text]
     return tokens
