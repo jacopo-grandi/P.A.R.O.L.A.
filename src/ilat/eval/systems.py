@@ -32,6 +32,7 @@ class System:
     force_language: bool = False
     prompt: bool = False
     kind: Literal["mlx-whisper", "parakeet", "crisper"] = "mlx-whisper"
+    vad: bool = False
 
     def backend(self, lang: str, seed: int = SEED) -> ASRBackend:
         # Optional backends are imported lazily: they need `uv sync --group baselines`.
@@ -44,7 +45,7 @@ class System:
 
             return CrisperBackend(self.model, seed=seed)
         prompt = DISFLUENCY_PROMPTS.get(lang) if self.prompt else None
-        return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed)
+        return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed, vad=self.vad)
 
     def language(self, lang: str) -> str | None:
         """Language passed to the backend for a file whose manifest language is ``lang``."""
@@ -56,6 +57,8 @@ SYSTEMS = {
     for s in [
         System("turbo", "large-v3-turbo, language detected"),
         System("turbo-lang", "large-v3-turbo, language forced", force_language=True),
+        System("turbo-vad", "large-v3-turbo, language detected, only stretches with sound (VAD)",
+               vad=True),
         System("turbo-prompt", "large-v3-turbo, language detected, disfluency prompt",
                prompt=True),
         System("turbo-lang-prompt", "large-v3-turbo, language forced, disfluency prompt",

@@ -194,7 +194,10 @@ def make_engine(engine: str):
         from ilat.asr.crisper_backend import CrisperBackend
 
         return CrisperBackend()
-    return MLXWhisperBackend()
+    # Call channels are often silent while the other side talks: VAD skips silent channels,
+    # drops text written over silence and picks the language on speech
+    # (results/2026-10-15-vad-analisi.md).
+    return MLXWhisperBackend(vad=True)
 
 
 def cmd_record(args) -> int:

@@ -78,3 +78,41 @@ def test_convert_result_keeps_segments_sorted():
     segs = convert_result(raw).segments
     assert [s.text for s in segs] == ["creare", "passare", "poi"]
     assert [(s.start, s.end) for s in segs] == [(10.0, 10.5), (10.0, 10.0), (11.0, 12.0)]
+
+
+def test_sound_share():
+    from ilat.asr.mlx_whisper_backend import sound_share
+
+    regions = [(1.0, 2.0), (4.0, 6.0)]
+    assert sound_share(0.0, 4.0, regions) == 0.25
+    assert sound_share(4.5, 5.5, regions) == 1.0
+    assert sound_share(2.5, 3.5, regions) == 0.0
+    assert sound_share(1.5, 1.5, regions) == 1.0 and sound_share(3.0, 3.0, regions) == 0.0
+
+
+def test_has_sound_keeps_long_segments_with_some_speech():
+    from ilat.asr.mlx_whisper_backend import has_sound
+    from ilat.schema import Segment, Word
+
+    regions = [(10.0, 15.0)]
+    long_seg = Segment(
+        start=0,
+        end=30,
+        text="a b",
+        words=[Word(text="a", start=11.0, end=11.5), Word(text="b", start=12.0, end=12.4)],
+    )
+    assert has_sound(long_seg, regions)  # little sound overall, but its words are on sound
+    invented = Segment(
+        start=0,
+        end=8,
+        text="Grazie a tutti.",
+        words=[
+            Word(text="Grazie", start=0.0, end=3.0),
+            Word(text="a", start=3.0, end=5.0),
+            Word(text="tutti.", start=5.0, end=8.0),
+        ],
+    )
+    assert not has_sound(invented, regions)
+    assert has_sound(
+        Segment(start=9.8, end=9.9, text="x", words=[Word(text="x", start=9.75, end=9.8)]), regions
+    )

@@ -413,6 +413,7 @@ dependencies = [
     { name = "jiwer" },
     { name = "mlx-whisper" },
     { name = "num2words" },
+    { name = "numpy" },
     { name = "pydantic" },
 ]
 
@@ -432,6 +433,7 @@ requires-dist = [
     { name = "jiwer", specifier = ">=4.0.0" },
     { name = "mlx-whisper", specifier = ">=0.4" },
     { name = "num2words", specifier = ">=0.5.14" },
+    { name = "numpy", specifier = ">=2" },
     { name = "pydantic", specifier = ">=2.7" },
 ]
 
