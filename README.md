@@ -6,7 +6,7 @@ English (including both mixed in the same sentence).
 "Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
 layer will be derived from the verbatim one, never the other way around.
 
-Status: early development (Phase 0, see [`docs/PLAN.md`](docs/PLAN.md)).
+Status: early development (Phase 1, see [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Requirements
 
@@ -33,6 +33,18 @@ uv run ilat transcribe call.m4a --out transcripts/
 
 Writes `<name>.json` (segments and words with timestamps) and `<name>.txt` (readable, one line
 per segment) next to the input, or into `--out`.
+
+### Writing reference transcripts
+
+```bash
+uv run ilat annotate draft call.json         # model output -> editable call.ann.txt
+uv run ilat annotate import call.ann.txt     # reviewed annotation -> validated call.ref.json
+uv run ilat validate call.ref.json           # check a reference against the conventions
+uv run ilat manifest check data/manifests/test.jsonl --files
+```
+
+Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:
+[`docs/annotation.md`](docs/annotation.md) (both in Italian).
 
 ## Development
 
