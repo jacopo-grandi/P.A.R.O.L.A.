@@ -54,6 +54,13 @@ uv run --group baselines ilat eval --systems parakeet-v3,crisper-turbo-lang
 Reports go to `results/` (markdown + csv); hypotheses are cached in `data/private/hyp/`.
 CrisperWhisper weights are under a non-commercial research license: evaluation only.
 
+To check whether a system's extra words were really spoken (references may have missed them):
+
+```bash
+uv run ilat audit build --system crisper-turbo-lang   # clips + local page in data/private/audit/
+uv run ilat audit summary audit-answers.json          # after exporting the answers from the page
+```
+
 Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:
 [`docs/annotation.md`](docs/annotation.md) (both in Italian).
 

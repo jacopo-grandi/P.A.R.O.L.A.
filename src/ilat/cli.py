@@ -6,10 +6,14 @@ ilat annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 ilat annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
 ilat manifest check <file.jsonl>    validate a dataset manifest
 ilat eval [--systems a,b]           run ASR systems on the test set and write a report
+ilat audit build --system <name>    sample a system's insertions for a listening check
+ilat audit summary <answers.json>   share of insertions that were really spoken
 """
 
 import argparse
+import json
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -19,6 +23,7 @@ from ilat import __version__
 from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
 from ilat.asr import DEFAULT_MODEL, MLXWhisperBackend
 from ilat.audio import FFmpegError
+from ilat.eval import audit
 from ilat.eval.report import run_system, score_system, write_report
 from ilat.eval.systems import SYSTEMS
 from ilat.manifest import check_manifest
@@ -90,6 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument(
         "--seed", type=int, default=0, help="random seed for decoding (use another --hyp-dir)"
     )
+
+    au = sub.add_parser("audit", help="listening check of a system's insertions")
+    ausub = au.add_subparsers(dest="action", required=True)
+    ab = ausub.add_parser("build", help="sample insertions, cut clips, write a review page")
+    ab.add_argument("--system", required=True, choices=list(SYSTEMS))
+    ab.add_argument("--manifest", type=Path, default=Path("data/manifests/test.jsonl"))
+    ab.add_argument("--root", type=Path, default=Path("."))
+    ab.add_argument("--hyp-dir", type=Path, default=Path("data/private/hyp"))
+    ab.add_argument("--out", type=Path, default=None, help="default: data/private/audit/<system>")
+    ab.add_argument("--seed", type=int, default=0, help="sampling seed")
+    asm = ausub.add_parser("summary", help="summarize exported answers")
+    asm.add_argument("file", type=Path)
     return parser
 
 
@@ -200,6 +217,42 @@ def cmd_eval(args) -> int:
     return 0
 
 
+def cmd_audit_build(args) -> int:
+    report = check_manifest(args.manifest, args.root, check_files=True)
+    if report.errors:
+        for e in report.errors:
+            print(f"error: {e}", file=sys.stderr)
+        return 1
+    records = [r for r in report.records if r.reference is not None]
+    insertions = []
+    for r in records:
+        hyp_path = args.hyp_dir / args.system / f"{Path(r.audio).stem}.json"
+        if not hyp_path.exists():
+            print(f"error: {hyp_path} missing: run `ilat eval --systems {args.system}` first",
+                  file=sys.stderr)  # fmt: skip
+            return 1
+        ref = Transcript.load(args.root / r.reference)
+        insertions += audit.find_insertions(r.id, ref, Transcript.load(hyp_path))
+    available = Counter(i.category for i in insertions)
+    print("insertions found:", dict(available))
+    items = audit.sample(insertions, seed=args.seed)
+    out = args.out or Path("data/private/audit") / args.system
+    (out / "clips").mkdir(parents=True, exist_ok=True)
+    audio_of = {r.id: args.root / r.audio for r in records}
+    for ins in items:
+        audit.cut_clip(
+            audio_of[ins.file_id], ins.start, ins.end, out / "clips" / f"{ins.item_id}.m4a"
+        )
+    page = audit.write_page(items, args.system, out)
+    print(f"wrote {page} ({len(items)} items)")
+    return 0
+
+
+def cmd_audit_summary(args) -> int:
+    print(audit.summarize(json.loads(args.file.read_text(encoding="utf-8"))))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
@@ -209,6 +262,8 @@ def main(argv: list[str] | None = None) -> int:
         ("annotate", "import"): cmd_annotate_import,
         ("manifest", "check"): cmd_manifest_check,
         ("eval", None): cmd_eval,
+        ("audit", "build"): cmd_audit_build,
+        ("audit", "summary"): cmd_audit_summary,
     }
     try:
         return handlers[(args.command, getattr(args, "action", None))](args)
