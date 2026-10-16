@@ -199,6 +199,8 @@ struct RecorderView: View {
                     Text(model.time(at: context.date))
                         .font(.system(size: 14, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize()  // "12:34" never wraps; the meters give way instead
                 }
                 VStack(spacing: 3) {
                     meter(model.levels.mic)
