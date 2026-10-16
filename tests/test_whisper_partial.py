@@ -45,8 +45,8 @@ def test_the_real_loop_still_has_what_the_growing_text_reads():
     # whisper_progress reads: then fix whisper_progress or drop the growing text (decision 0033).
     import inspect
 
-    import mlx_whisper.transcribe as module
+    import mlx_whisper.transcribe  # noqa: F401  (mlx_whisper.transcribe is also the function)
 
-    source = inspect.getsource(module.transcribe)
+    source = inspect.getsource(sys.modules["mlx_whisper.transcribe"].transcribe)
     added, updated = source.find("all_segments.extend("), source.find("pbar.update(")
     assert 0 <= added < updated
