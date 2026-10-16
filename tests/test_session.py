@@ -173,7 +173,8 @@ def test_import_a_file_like_a_recording(tmp_path, helper):
     capture = json.loads((folder / "Intervista-Marco-1.capture.json").read_text())
     assert capture["source"] == "Intervista Marco (1).m4a"
     assert capture["started_at"].startswith("2026-10-01T09:30")
-    assert (folder / "Intervista-Marco-1.mixed.wav").exists() and not upload.exists()
+    assert (folder / "Intervista-Marco-1.mixed.flac").exists() and not upload.exists()
+    assert not (folder / "Intervista-Marco-1.mixed.wav").exists()  # compressed (decision 0024)
     assert "] ciao a (tutti?)" in (folder / "Intervista-Marco-1.txt").read_text()  # no side label
     assert session.free_name("Intervista Marco (1).m4a") == "Intervista-Marco-1-2"
 

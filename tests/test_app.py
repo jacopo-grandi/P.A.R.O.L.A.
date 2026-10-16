@@ -177,3 +177,13 @@ def test_search_across_calls(client):
     client.post("/api/recordings/call/rename", json={"title": "Cena di sabato"})
     r = client.get("/api/search", params={"q": "sabato"}).json()
     assert r[0]["count"] == 0 and r[0]["title"] == "Cena di sabato"  # found by its title
+
+
+def test_a_compressed_call_is_listed_and_played(client, folder):
+    for c in ("mic", "system"):
+        (folder / f"call.{c}.wav").rename(folder / f"call.{c}.flac")
+    assert [r["name"] for r in client.get("/api/recordings").json()] == ["call"]
+    assert set(client.get("/api/recordings/call").json()["audio"]) == {"mic", "system"}
+    r = client.get("/audio/call/mic")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/flac"
+    assert client.get("/audio/call/nope").status_code == 404

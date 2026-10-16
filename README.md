@@ -55,6 +55,8 @@ goes over the network.
 
 ```bash
 uv run parola serve                        # http://127.0.0.1:8765, local only
+uv run parola compress --dry-run           # calls still stored as wav, and their size
+uv run parola compress                     # lossless FLAC for them: ~100 MB per hour of call
 ```
 
 **● Registra** in the sidebar records a call without the terminal: timer, live levels for both

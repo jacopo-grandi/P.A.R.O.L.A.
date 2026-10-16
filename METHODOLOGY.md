@@ -108,6 +108,14 @@ untouched model output is kept next to the transcript.
   ([report](results/2026-10-15-vad.md)). Earlier versions that shifted decoding windows lost
   speech (up to 27.9%) and were dropped ([analysis](results/2026-10-15-vad-analisi.md)).
 
+## Storage
+
+After transcription each channel is stored as FLAC at 16 kHz mono 16-bit: the very signal the
+models get, losslessly, at about 100 MB per hour of call instead of about 2 GB. A lossy codec
+was measured and rejected: re-encoding the test set as AAC at 32-48 kbps raised turbo's fidelity
+WER from about 5% to 9-12%
+([0024](docs/decisions/0024-lossless-audio-after-transcription.md)).
+
 ## Imported files
 
 An audio or video file dropped into the app goes through the same pipeline as a recording:
@@ -175,3 +183,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0021](docs/decisions/0021-import-audio-and-video-files.md) | Importing audio and video files |
 | [0022](docs/decisions/0022-titles-read-like-titles.md) | Titles that read like titles |
 | [0023](docs/decisions/0023-title-rules-that-generalize.md) | Title rules that generalize |
+| [0024](docs/decisions/0024-lossless-audio-after-transcription.md) | Lossless audio after transcription |

@@ -4,6 +4,7 @@ parola transcribe <file>              audio/video -> <name>.json + <name>.txt
 parola record                         record a call (mic + system audio) and transcribe it
 parola serve                          local web UI for the recorded calls
 parola titles                         suggested titles next to the ones you chose
+parola compress [--dry-run]           lossless FLAC for calls still stored as wav
 parola validate <transcript.json>     check a reference against docs/conventions.md
 parola annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 parola annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -92,6 +93,10 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
                     help="folder with the recordings (default: data/private/calls)")  # fmt: skip
     sv.add_argument("--port", type=int, default=8765)
+
+    co = sub.add_parser("compress", help="lossless FLAC for calls still stored as wav")
+    co.add_argument("--dir", type=Path, default=Path("data/private/calls"))
+    co.add_argument("--dry-run", action="store_true", help="list what would be compressed")
 
     ti = sub.add_parser("titles", help="suggested titles next to the ones you chose")
     ti.add_argument("--dir", type=Path, default=Path("data/private/calls"))
@@ -230,6 +235,46 @@ def cmd_record(args) -> int:
     return main_record(args.out, args.name, make_engine(args.engine), language,
                        args.duration, not args.no_mic, not args.no_system,
                        second=second)  # fmt: skip
+
+
+def cmd_compress(args) -> int:
+    """Replace the wav of each transcribed call with a FLAC of the same samples the models hear
+    (decision 0024). Calls not transcribed yet are left alone."""
+    from parola.app.server import recordings
+    from parola.audio import FFmpegError, compress
+    from parola.capture.recorder import CHANNELS
+
+    mb = 1024 * 1024
+    before = after = 0
+    failed = 0
+    for name in recordings(args.dir):
+        for c in CHANNELS:
+            wav = args.dir / f"{name}.{c}.wav"
+            if not wav.exists():
+                continue
+            size = wav.stat().st_size
+            if args.dry_run:
+                print(f"would compress {wav.name} ({size / mb:.0f} MB)")
+                before += size
+                continue
+            try:
+                flac = compress(wav)
+            except FFmpegError as e:
+                print(f"kept {wav.name}: {e}", file=sys.stderr)
+                failed += 1
+                continue
+            before += size
+            after += flac.stat().st_size
+            print(
+                f"{wav.name}: {size / mb:.0f} MB -> {flac.name} {flac.stat().st_size / mb:.1f} MB"
+            )
+    if args.dry_run:
+        print(f"{before / mb:.0f} MB of wav; about a twentieth of it once compressed")
+    elif before:
+        print(f"{before / mb:.0f} MB -> {after / mb:.0f} MB")
+    else:
+        print("nothing to compress")
+    return 1 if failed else 0
 
 
 def cmd_titles(args) -> int:
@@ -527,6 +572,7 @@ def main(argv: list[str] | None = None) -> int:
         ("record", None): cmd_record,
         ("serve", None): cmd_serve,
         ("titles", None): cmd_titles,
+        ("compress", None): cmd_compress,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,

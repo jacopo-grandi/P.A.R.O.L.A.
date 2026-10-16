@@ -2,7 +2,8 @@
 
 Everything is served from this machine (no CDN, no external requests) and bound to 127.0.0.1.
 A recording is the set of files written by ``parola record`` in one folder:
-``<name>.json`` (merged transcript), ``<name>.mic.wav``, ``<name>.system.wav`` and
+``<name>.json`` (merged transcript), ``<name>.mic.flac``, ``<name>.system.flac`` (``.wav`` until
+compressed, decision 0024) and
 ``<name>.capture.json``.
 """
 
@@ -21,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from parola import editing
+from parola.audio import channel_file
 from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
 from parola.schema import Transcript, format_timestamp
@@ -31,7 +33,13 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 TRASH = ".trash"
 _TRASHED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)--\d{8}-\d{6}-\d{6}$")
 # Every file a recording owns. Listed, not globbed: "prova.*" would also catch "prova.2.json".
-OWNED = (".json", ".asr.json", ".capture.json", ".txt", ".mic.wav", ".system.wav", ".mixed.wav")
+OWNED = (
+    ".json",
+    ".asr.json",
+    ".capture.json",
+    ".txt",
+    *(f".{c}{ext}" for c in ("mic", "system", "mixed") for ext in (".wav", ".flac")),
+)
 
 
 def _check(name: str) -> str:
@@ -89,7 +97,7 @@ def recordings(folder: Path) -> list[str]:
         name = p.stem
         if name.endswith((".capture", ".asr")) or not _NAME.match(name):
             continue
-        if any((folder / f"{name}.{c}.wav").exists() for c in CHANNELS):
+        if any(channel_file(folder, name, c) for c in CHANNELS):
             names.append(name)
     return names
 
@@ -220,7 +228,7 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         data = json.loads(path.read_text(encoding="utf-8"))
         data["summary"] = summary(folder, name)
         data["audio"] = {c: f"/audio/{name}/{c}" for c in CHANNELS
-                         if (folder / f"{name}.{c}.wav").exists()}  # fmt: skip
+                         if channel_file(folder, name, c)}  # fmt: skip
         return data
 
     def _load(name: str) -> tuple[Transcript, Path]:
@@ -307,10 +315,11 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
     @app.get("/audio/{name}/{channel}")
     def audio(name: str, channel: str) -> FileResponse:
         name = _check(name)
-        path = folder / f"{name}.{channel}.wav"
-        if channel not in CHANNELS or not path.exists():
+        path = channel_file(folder, name, channel) if channel in CHANNELS else None
+        if path is None:
             raise HTTPException(status_code=404, detail="no such audio")
-        return FileResponse(path, media_type="audio/wav")
+        media = "audio/flac" if path.suffix == ".flac" else "audio/wav"
+        return FileResponse(path, media_type=media)
 
     @app.get("/export/{name}.{fmt}")
     def export(name: str, fmt: str):

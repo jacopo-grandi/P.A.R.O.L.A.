@@ -74,7 +74,9 @@ class Recording:
     capture: dict
 
     def path(self, channel: str) -> Path:
-        return self.out_dir / f"{self.name}.{channel}.wav"
+        """The channel's audio: the recorded wav, or its FLAC once compressed."""
+        flac = self.out_dir / f"{self.name}.{channel}.flac"
+        return flac if flac.exists() else self.out_dir / f"{self.name}.{channel}.wav"
 
     def channels(self) -> list[str]:
         return [c for c in CHANNELS if c in self.capture and self.path(c).exists()]
@@ -295,7 +297,22 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     merged.metadata.title = merged.metadata.title or merged.metadata.title_suggested
     merged.save(json_path)
     txt_path.write_text(to_dialogue(merged), encoding="utf-8")
+    compress_channels(rec)
     return json_path, txt_path
+
+
+def compress_channels(rec: Recording) -> None:
+    """Replace each channel's wav with a lossless FLAC of what the models hear (decision 0024).
+    A failure keeps the wav: the call stays playable, only larger."""
+    from parola.audio import compress
+
+    for c in CHANNELS:
+        wav = rec.out_dir / f"{rec.name}.{c}.wav"
+        if wav.exists():
+            try:
+                compress(wav)
+            except Exception as e:
+                print(f"warning: {wav.name} not compressed: {e}", file=sys.stderr)
 
 
 def main_record(out_dir: Path, name: str | None, backend: ASRBackend, language: str | None,
