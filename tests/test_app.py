@@ -37,7 +37,7 @@ def client(folder):
 
 
 def test_index_and_static(client):
-    assert "ilat" in client.get("/").text
+    assert "P.A.R.O.L.A." in client.get("/").text
     assert client.get("/static/app.js").status_code == 200
 
 

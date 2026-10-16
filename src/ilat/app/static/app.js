@@ -1,4 +1,4 @@
-// ilat local UI: calls in the sidebar, the transcript in the middle, doubtful words to review.
+// P.A.R.O.L.A. local UI (package ilat): calls in the sidebar, the transcript in the middle, doubtful words to review.
 "use strict";
 
 const LABELS = { mic: "Io", system: "Altri" };
@@ -718,7 +718,7 @@ async function openFloating(auto) {
   }
   const doc = pip.document;
   doc.head.append(el("link", { rel: "stylesheet", href: `${location.origin}/static/style.css` }));
-  doc.title = "ilat";
+  doc.title = "P.A.R.O.L.A.";
   doc.body.className = "pip";
   const v = buildLive(true);
   v.floating = true;

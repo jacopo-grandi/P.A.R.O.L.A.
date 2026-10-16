@@ -1,4 +1,4 @@
-/* ilat — black, quiet, readable. System fonts and inline icons only: nothing from the network. */
+/* P.A.R.O.L.A. — black, quiet, readable. System fonts and inline icons only: nothing from the network. */
 
 :root {
   --bg: #000;
@@ -53,8 +53,9 @@ svg { display: block; }
   width: var(--side-w); flex: none; height: 100vh; display: flex; flex-direction: column;
   background: var(--side); border-right: 1px solid var(--line);
 }
-.side-top { padding: 14px 16px 8px; }
-.brand { font-weight: 600; letter-spacing: -0.01em; color: var(--fg-2); }
+.side-top { padding: 16px 16px 10px; }
+.brand { display: block; width: max-content; border-radius: 4px; }
+.brand img { display: block; width: 200px; height: auto; }
 .search { padding: 8px 12px; }
 .search input {
   width: 100%; padding: 6px 10px; border-radius: var(--radius); border: 1px solid transparent;

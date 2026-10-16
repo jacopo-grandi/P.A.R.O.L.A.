@@ -1,10 +1,12 @@
-# ilat — Italian Audio Transcriptor
+<h1 align="center"><img src="docs/assets/parola.png" alt="P.A.R.O.L.A." width="720"></h1>
 
 Verbatim transcription of audio and calls, **100% local** on Apple Silicon Macs, for Italian and
 English (including both mixed in the same sentence).
 
 "Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
 layer will be derived from the verbatim one, never the other way around.
+
+The command-line tool and the Python package are still called `ilat`.
 
 Status: early development (Phase 1, see [`docs/PLAN.md`](docs/PLAN.md)).
 
