@@ -97,6 +97,8 @@ class Metadata(BaseModel):
     language_requested: str | None = None
     language_detected: str | None = None
     annotator: str | None = None
+    # Display name chosen by the user in the app; the files keep their original name.
+    title: str | None = None
     created_at: datetime
     ilat_version: str
 

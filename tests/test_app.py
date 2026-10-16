@@ -114,3 +114,13 @@ def test_docx_export(client):
     doc = Document(BytesIO(r.content))
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "ciao a tutti" in text and "buongiorno" in text
+
+
+def test_rename(client):
+    r = client.post("/api/recordings/call/rename", json={"title": "  Riunione   LED Q4 "})
+    assert r.json()["summary"]["title"] == "Riunione LED Q4"
+    assert client.get("/api/recordings").json()[0]["title"] == "Riunione LED Q4"
+    assert (
+        client.post("/api/recordings/call/rename", json={"title": ""}).json()["summary"]["title"]
+        == "call"
+    )

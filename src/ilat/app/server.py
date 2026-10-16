@@ -39,6 +39,7 @@ def summary(folder: Path, name: str) -> dict:
     capture = json.loads(capture_path.read_text()) if capture_path.exists() else {}
     return {
         "name": name,
+        "title": t.metadata.title or name,
         "started_at": capture.get("started_at") or t.metadata.created_at.isoformat(),
         "duration": t.metadata.duration,
         "channels": sorted({s.channel for s in t.segments if s.channel}),
@@ -56,6 +57,10 @@ class RecordRequest(BaseModel):
     lang: str | None = None
     mic: bool = True
     system: bool = True
+
+
+class Rename(BaseModel):
+    title: str
 
 
 class Span(BaseModel):
@@ -167,6 +172,14 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         except editing.EditError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return _store(t, path, name)
+
+    @app.post("/api/recordings/{name}/rename")
+    def rename(name: str, req: Rename) -> dict:
+        t, path = _load(name)
+        title = " ".join(req.title.split())[:120]
+        t.metadata.title = title or None
+        t.save(path)  # a display change: not an edit of the transcript, no .asr.json needed
+        return get_recording(name)
 
     @app.post("/api/recordings/{name}/undo")
     def undo(name: str) -> dict:
