@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -25,6 +27,11 @@ from ilat.schema import Transcript, format_timestamp
 
 STATIC = Path(__file__).resolve().parent / "static"
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Deleted calls are moved here, one folder per deletion, never removed by the app (decision 0017).
+TRASH = ".trash"
+_TRASHED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)--\d{8}-\d{6}-\d{6}$")
+# Every file a recording owns. Listed, not globbed: "prova.*" would also catch "prova.2.json".
+OWNED = (".json", ".asr.json", ".capture.json", ".txt", ".mic.wav", ".system.wav")
 
 
 def _check(name: str) -> str:
@@ -82,6 +89,10 @@ def recordings(folder: Path) -> list[str]:
         if any((folder / f"{name}.{c}.wav").exists() for c in CHANNELS):
             names.append(name)
     return names
+
+
+def owned_files(folder: Path, name: str) -> list[Path]:
+    return [folder / f"{name}{s}" for s in OWNED if (folder / f"{name}{s}").exists()]
 
 
 def to_markdown(t: Transcript, name: str) -> str:
@@ -185,6 +196,34 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         t.metadata.title = title or None
         t.save(path)  # a display change: not an edit of the transcript, no .asr.json needed
         return get_recording(name)
+
+    @app.delete("/api/recordings/{name}")
+    def delete(name: str) -> dict:
+        """Move the call's files to the trash folder: the app never deletes audio for real."""
+        _load(name)
+        st = session.status()
+        if st["name"] == name and st["state"] in ("recording", "transcribing"):
+            raise HTTPException(status_code=409, detail="the call is still being recorded")
+        entry = f"{name}--{datetime.now():%Y%m%d-%H%M%S-%f}"
+        dest = folder / TRASH / entry
+        dest.mkdir(parents=True)
+        for f in owned_files(folder, name):
+            shutil.move(f, dest / f.name)
+        return {"name": name, "trashed": entry}
+
+    @app.post("/api/trash/{entry}/restore")
+    def restore(entry: str) -> dict:
+        m = _TRASHED.match(entry)
+        src = folder / TRASH / entry
+        if not m or not src.is_dir():
+            raise HTTPException(status_code=404, detail="not in the trash")
+        name = m.group(1)
+        if (folder / f"{name}.json").exists():
+            raise HTTPException(status_code=409, detail=f"a call named {name} exists")
+        for f in src.iterdir():
+            shutil.move(f, folder / f.name)
+        src.rmdir()
+        return summary(folder, name)
 
     @app.post("/api/recordings/{name}/undo")
     def undo(name: str) -> dict:

@@ -134,3 +134,26 @@ def test_exports_are_named_after_the_title(client):
     assert 'filename="call.md"' in disposition
     assert "filename*=UTF-8''Riunione%20LEDQ4.md" in disposition
     assert r.text.startswith("# Riunione: LED/Q4")
+
+
+def test_delete_moves_the_call_to_the_trash_and_restore_brings_it_back(client, folder):
+    (folder / "call.txt").write_text("x")
+    (folder / "call.2.json").write_text("{}")  # another recording's file: must not move
+    r = client.delete("/api/recordings/call")
+    entry = r.json()["trashed"]
+    assert client.get("/api/recordings").json() == []
+    moved = sorted(p.name for p in (folder / ".trash" / entry).iterdir())
+    assert moved == [
+        "call.capture.json",
+        "call.json",
+        "call.mic.wav",
+        "call.system.wav",
+        "call.txt",
+    ]
+    assert (folder / "call.2.json").exists() and (folder / "other.json").exists()
+    assert client.delete("/api/recordings/call").status_code == 404
+    assert client.post(f"/api/trash/{entry}/restore").json()["name"] == "call"
+    assert [r["name"] for r in client.get("/api/recordings").json()] == ["call"]
+    assert not (folder / ".trash" / entry).exists()
+    assert client.post(f"/api/trash/{entry}/restore").status_code == 404
+    assert client.post("/api/trash/..--x/restore").status_code == 404

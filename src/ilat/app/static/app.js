@@ -41,6 +41,7 @@ const ICONS = {
         '<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>' +
         '<circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
   filter: '<path d="M4 7h16M7 12h10M10 17h4"/>',
+  close: '<path d="M7 7l10 10M17 7L7 17"/>',
 };
 
 function icon(name, size = 16) {
@@ -87,13 +88,48 @@ async function postJSON(url, body) {
 }
 
 let toastTimer = null;
-function toast(message) {
-  let t = document.querySelector(".toast");
-  if (!t) document.body.append(t = el("div", { class: "toast", role: "status" }));
-  t.textContent = message;
+function toast(message, action) {
+  // A message with an action (Annulla) stays until it is used or closed; plain ones fade.
+  const t = document.getElementById("toast");
+  const parts = [el("span", {}, message)];
+  if (action) {
+    parts.push(el("button", { class: "toast-action", onclick: () => { hideToast(); action.run(); } },
+      action.label));
+    parts.push(iconButton("close", "Chiudi l'avviso", hideToast, "toast-close"));
+  }
+  t.replaceChildren(...parts);
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+  if (!action) toastTimer = setTimeout(hideToast, 4000);
+}
+
+function hideToast() {
+  const t = document.getElementById("toast");
+  t.classList.remove("show");
+  setTimeout(() => { if (!t.classList.contains("show")) t.replaceChildren(); }, 250);
+}
+
+function popMenu(anchor, ...items) {
+  // A small menu under `anchor`; closes on a choice, a click elsewhere or Escape.
+  document.querySelectorAll(".menu").forEach(m => m.remove());
+  const menu = el("div", { class: "menu", role: "menu" }, ...items);
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("click", outside, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
+  const outside = e => { if (!menu.contains(e.target)) close(); };
+  const onKey = e => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); anchor.querySelector("button")?.focus(); }
+  };
+  menu.addEventListener("click", e => { if (e.target.closest("a, button")) close(); });
+  anchor.append(menu);
+  setTimeout(() => {
+    document.addEventListener("click", outside, true);
+    document.addEventListener("keydown", onKey, true);
+  });
+  menu.querySelector("a, button")?.focus();
+  return menu;
 }
 
 // ---------------------------------------------------------------- sidebar
@@ -140,16 +176,42 @@ function renderCalls() {
     const title = el("span", { class: "title" }, c.title);
     const sub = el("span", { class: "sub" }, `${shortWhen(date)} · ${minutes(c.duration)}`,
       c.to_review ? el("span", { class: "n" }, ` · ${c.to_review} da rivedere`) : null);
-    const a = el("a", { class: "call" + (c.name === recName ? " active" : ""),
-                        href: `#/rec/${enc(c.name)}`, title: "Doppio clic per rinominare" },
-      title, sub);
+    const a = el("a", { class: "call", href: `#/rec/${enc(c.name)}`,
+                        title: "Doppio clic per rinominare" }, title, sub);
     a.addEventListener("dblclick", e => { e.preventDefault(); renameInPlace(title, c); });
-    items.push(a);
+    const row = el("div", { class: "call-row" + (c.name === recName ? " active" : "") }, a);
+    row.append(iconButton("more", `Altre azioni per ${c.title}`, e => {
+      e.stopPropagation();
+      popMenu(row,
+        el("button", { role: "menuitem", onclick: () => renameInPlace(title, c) }, "Rinomina"),
+        el("button", { role: "menuitem", class: "danger", onclick: () => deleteCall(c) },
+          "Elimina"));
+    }, "call-more"));
+    items.push(row);
   }
   if (!items.length) {
-    items.push(el("p", { class: "empty-list" }, q ? "Nessun risultato." : "Ancora nessuna call."));
+    items.push(el("p", { class: "empty-list" },
+      q ? `Nessuna call per “${$search.value.trim()}”.` : "Ancora nessuna call."));
   }
   $calls.replaceChildren(...items);
+}
+
+async function deleteCall(call) {
+  let res;
+  try {
+    res = await fetch(`/api/recordings/${enc(call.name)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error((await res.json()).detail || res.status);
+    res = await res.json();
+  } catch (e) { toast(`Call non eliminata: ${e.message}`); return; }
+  if (call.name === recName) location.hash = "#/";
+  await refreshCalls();
+  toast(`“${call.title}” eliminata`, { label: "Annulla", run: async () => {
+    try {
+      await postJSON(`/api/trash/${enc(res.trashed)}/restore`);
+      await refreshCalls();
+      location.hash = `#/rec/${enc(call.name)}`;
+    } catch (e) { toast(`Call non ripristinata: ${e.message}`); }
+  } });
 }
 
 function renameInPlace(host, call) {
@@ -358,15 +420,12 @@ function renderHeading() {
 }
 
 function exportMenu(anchor) {
-  const close = () => { menu.remove(); document.removeEventListener("click", outside, true); };
-  const outside = e => { if (!menu.contains(e.target)) close(); };
-  const link = (f, label) => el("a", { href: `/export/${enc(recName)}.${f}`, onclick: close }, label);
-  const menu = el("div", { class: "menu", role: "menu" },
+  const link = (f, label) => el("a", { role: "menuitem", href: `/export/${enc(recName)}.${f}` },
+    label);
+  popMenu(anchor,
     link("txt", "Testo (.txt)"), link("md", "Markdown (.md)"), link("docx", "Word (.docx)"),
     link("json", "Dati (.json)"), el("hr"),
-    el("button", { onclick: () => { close(); window.print(); } }, "Stampa o salva PDF"));
-  anchor.append(menu);
-  setTimeout(() => document.addEventListener("click", outside, true));
+    el("button", { role: "menuitem", onclick: () => window.print() }, "Stampa o salva PDF"));
 }
 
 function relabel() {
