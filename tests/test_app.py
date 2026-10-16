@@ -157,3 +157,11 @@ def test_delete_moves_the_call_to_the_trash_and_restore_brings_it_back(client, f
     assert not (folder / ".trash" / entry).exists()
     assert client.post(f"/api/trash/{entry}/restore").status_code == 404
     assert client.post("/api/trash/..--x/restore").status_code == 404
+
+
+def test_title_suggestion_saves_nothing(client, folder):
+    before = (folder / "call.json").read_text()
+    r = client.get("/api/recordings/call/title-suggestion").json()
+    assert r["title"] is None  # four words: too short for a title
+    assert "buongiorno" in r["phrases"]
+    assert (folder / "call.json").read_text() == before

@@ -169,7 +169,8 @@ class RecordingSession:
             "name": self.name,
             "paused": self.paused_at is not None,
             "elapsed": round(elapsed, 1),
-            "levels": self.levels,
+            # The levels thread may still store a line read just before the pause.
+            "levels": {} if self.paused_at is not None else self.levels,
             "message": self.message,
             "step": list(self.step),
         }

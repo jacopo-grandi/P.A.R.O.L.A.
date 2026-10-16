@@ -23,6 +23,7 @@ from pathlib import Path
 from parola import __version__
 from parola.asr import ASRBackend
 from parola.audio import extract_audio
+from parola.keywords import suggest_title
 from parola.pipeline import transcribe_file
 from parola.schema import Metadata, Segment, Transcript, to_text
 from parola.schema.vocab import split_punctuation
@@ -274,6 +275,8 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     merged = merge_channels(parts, f"{rec.name}.*.wav", duration)
     json_path = rec.out_dir / f"{rec.name}.json"
     txt_path = rec.out_dir / f"{rec.name}.txt"
+    # A title from what was said (decision 0020): only a label, the person can change it.
+    merged.metadata.title = merged.metadata.title or suggest_title(merged)
     merged.save(json_path)
     txt_path.write_text(to_dialogue(merged), encoding="utf-8")
     return json_path, txt_path

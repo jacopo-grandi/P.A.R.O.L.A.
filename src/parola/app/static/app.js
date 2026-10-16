@@ -184,6 +184,8 @@ function renderCalls() {
       e.stopPropagation();
       popMenu(row,
         el("button", { role: "menuitem", onclick: () => renameInPlace(title, c) }, "Rinomina"),
+        el("button", { role: "menuitem", onclick: () => suggestTitle(title, c) },
+          "Titolo dal contenuto"),
         el("button", { role: "menuitem", class: "danger", onclick: () => deleteCall(c) },
           "Elimina"));
     }, "call-more"));
@@ -194,6 +196,16 @@ function renderCalls() {
       q ? `Nessuna call per “${$search.value.trim()}”.` : "Ancora nessuna call."));
   }
   $calls.replaceChildren(...items);
+}
+
+async function suggestTitle(host, call) {
+  // Key phrases of the call, proposed in the rename field: the person confirms or edits.
+  let s;
+  try {
+    s = await getJSON(`/api/recordings/${enc(call.name)}/title-suggestion`);
+  } catch (e) { toast(`Nessun titolo suggerito: ${e.message}`); return; }
+  if (!s.title) { toast("La call è troppo breve per suggerire un titolo."); return; }
+  renameInPlace(host, call, s.title);
 }
 
 async function deleteCall(call) {
@@ -214,9 +226,10 @@ async function deleteCall(call) {
   } });
 }
 
-function renameInPlace(host, call) {
+function renameInPlace(host, call, proposal) {
+  // `proposal` (a suggested title) fills the field; Enter keeps it, Esc leaves the old name.
   const before = call.title;
-  const input = el("input", { class: "inline", value: before, maxlength: "120",
+  const input = el("input", { class: "inline", value: proposal || before, maxlength: "120",
                               "aria-label": "Nome della call" });
   host.replaceChildren(input);
   input.focus();

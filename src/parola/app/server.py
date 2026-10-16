@@ -227,6 +227,14 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         src.rmdir()
         return summary(folder, name)
 
+    @app.get("/api/recordings/{name}/title-suggestion")
+    def title_suggestion(name: str) -> dict:
+        """A title from the call's key phrases; nothing is saved (decision 0020)."""
+        from parola.keywords import key_phrases, suggest_title
+
+        t, _ = _load(name)
+        return {"title": suggest_title(t), "phrases": [p.text for p in key_phrases(t, 8)]}
+
     @app.post("/api/recordings/{name}/undo")
     def undo(name: str) -> dict:
         t, path = _load(name)
