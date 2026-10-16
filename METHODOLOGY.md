@@ -5,6 +5,35 @@ setting was chosen. Each choice has a short decision note in [`docs/decisions/`]
 and each number links to the report it comes from in [`results/`](results/). The decision notes
 and reports are in Italian.
 
+## Summary
+
+P.A.R.O.L.A. transcribes Italian and English speech, calls and imported files, entirely on an
+Apple Silicon Mac. It keeps what was said, as it was said: repetitions, truncations and false
+starts stay, and grammar is not fixed. Whisper large-v3-turbo writes the transcript (fidelity
+WER 4.8% in Italian and 5.3% in English on adjudicated references), a second model, Parakeet v3,
+marks the words it does not confirm (66% of turbo's errors flagged by marking 12% of the words),
+and the person reviews only those. Calls are recorded on two channels, so "me" and "the others"
+are never guessed; within a channel, voices are told apart by sherpa-onnx with our own spectral
+clustering (diarization error 30% on two AMI meetings). An hour of audio takes about 8 minutes on
+an M4 Pro, with a memory peak of about 6 GB. The test set is small (0.76 hours of adjudicated
+references), and the limitations are listed at the end.
+
+## Pipeline
+
+Each stage, with what it costs on an hour of audio (en-001, M4 Pro,
+[0031](docs/decisions/0031-provisional-text-after-whisper.md)):
+
+| Stage | What it does | Time per hour |
+|---|---|---|
+| Capture or import | Two channels from Core Audio taps, or any audio or video file, to 16 kHz mono | real time / seconds |
+| Language | Italian or English, from 5 windows spread over the audio, unless the person chose it | 2 s |
+| Voice activity | Finds the stretches with sound; text over silence is dropped | seconds |
+| Transcript | Whisper large-v3-turbo, word timestamps; the text is shown as it grows | 3:00 |
+| Doubtful words | Parakeet TDT 0.6B v3 as a second opinion, aligned word by word | 1:14 |
+| Echo, segments | Drops the others' voice leaking into the microphone; joins short segments | seconds |
+| Who speaks | sherpa-onnx pieces, regrouped by spectral clustering | 3:23 |
+| Title, storage | Key-phrase title; lossless FLAC | seconds |
+
 ## Principles
 
 - **Everything runs on the Mac.** The network is used once, to download the models. No cloud API,
@@ -79,6 +108,19 @@ On the adjudicated references ([report](results/2026-10-15-adjudicated.md); fide
 - **Fine-tuning is parked.** The plan for an English-first LoRA on freely licensed data is in
   [`docs/PLAN.md`](docs/PLAN.md) ([0006](docs/decisions/0006-english-only-training-first.md)).
 
+## Language
+
+Whisper picks one language and transcribes the whole file in it. If it picks wrong, it does not
+transcribe: an hour of English came out as an Italian translation. Its own guess looks at the
+first 30 seconds only, and our earlier probe (the first 30 seconds of speech glued together)
+said Italian for an Italian speaking English. Now the guess is the average of Whisper's language
+probabilities on 5 raw 30-second windows that start on speech, spread over the whole recording,
+and only Italian and English can win. On the four test-set files: 4 of 4 right, against 3 of 4,
+in 1.9 seconds; the language of it-002 and en-002 does not change, so their error rates do not
+either ([0030](docs/decisions/0030-language-from-windows-and-asked-on-import.md),
+[report](results/2026-10-16-language-detection.md)). When a file is imported the app asks its
+language first (Italiano, English or detect), since the person usually knows it.
+
 ## Doubtful words
 
 Each call is transcribed twice: by turbo and by Parakeet as a second opinion. The two are aligned
@@ -122,11 +164,19 @@ Voices show as "Altri 1", "Altri 2"..., can be named, and every turn can be move
 voice and undone ([0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md),
 [results](results/2026-10-16-diarization-sherpa.md)).
 
-## Memory
+## Time and memory
 
-Only one speech model is in memory at a time, and none between calls: for a 6-minute file the
-peak goes from 11.5 GB to 6.1 GB and the waiting server from 10 GB to 0.27 GB, with the same
-time and the same transcript ([0027](docs/decisions/0027-release-speech-models-after-use.md)).
+An hour of audio takes about 7 minutes 50 seconds on an M4 Pro (stages in "Pipeline"). Only one
+speech model is in memory at a time, and none between calls: for a 6-minute file the peak goes
+from 11.5 GB to 6.1 GB and the waiting server from 10 GB to 0.27 GB, with the same time and the
+same transcript ([0027](docs/decisions/0027-release-speech-models-after-use.md)).
+
+The person does not wait for the end to read. Each 30-second window Whisper decodes is shown as
+soon as it is done, then the doubtful words, then the voices; the text can be corrected once it is
+final. The windows are read from Whisper's own decoding loop without changing it: on en-002 the
+final transcript is identical, word for word with the same times, doubtful words and voices,
+to the one made before ([0031](docs/decisions/0031-provisional-text-after-whisper.md),
+[0033](docs/decisions/0033-text-grows-while-whisper-works.md)).
 
 ## Storage
 
@@ -136,12 +186,21 @@ was measured and rejected: re-encoding the test set as AAC at 32-48 kbps raised 
 WER from about 5% to 9-12%
 ([0024](docs/decisions/0024-lossless-audio-after-transcription.md)).
 
+Clicking a word plays the audio from there, so the player must land on the right second. The
+native app's window is WebKit, and WebKit cannot seek in FLAC: on an hour-long test file with a
+beep on every minute, after a jump the beep came tens of seconds late or not at all, with or
+without a FLAC seek table, while in WAV it came where expected; Chrome was exact (±0.02 s) on
+both. Calls stay FLAC on disk, and the player gets a WAV copy decoded when the call is opened
+(0.6 s per hour), of which only the last three are kept
+([0032](docs/decisions/0032-play-wav-copies-of-flac-calls.md),
+[report](results/2026-10-16-flac-seeking.md)).
+
 ## Imported files
 
 An audio or video file dropped into the app goes through the same pipeline as a recording:
 conversion to 16 kHz mono, VAD, turbo, Parakeet for the doubtful words, segment merging and the
-title. Every voice is on one track (channel `mixed`), so there is no "Io / Altri" split and no
-echo removal; telling the voices apart needs speaker diarization, planned after v1
+title, after the language question above. Every voice is on one track (channel `mixed`), so
+there is no "Io / Altri" split and no echo removal; the voices are told apart as in "Who speaks"
 ([0021](docs/decisions/0021-import-audio-and-video-files.md)).
 
 ## Derived layers
@@ -165,6 +224,41 @@ echo removal; telling the voices apart needs speaker diarization, planned after 
   rules are measured on calls they were never tuned on. Word frequencies come from
   [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (code Apache-2.0, data
   CC BY-SA 4.0).
+
+## Limitations
+
+- **A small test set.** The error rates come from 0.76 hours on two files, one per language;
+  the confidence intervals are wide. it-001 and en-001 have no
+  reference yet.
+- **Silver references.** The references started as turbo drafts. Adjudication against
+  CrisperWhisper reduces the bias towards turbo but does not remove it.
+- **Same mistakes are invisible.** About a third of turbo's errors are not flagged, because
+  Parakeet makes the same mistake. On accented English (en-001, an Italian speaker) 24% of the
+  words are flagged, twice the test-set rate; this has not been analysed yet.
+- **Voices measured on English meetings only.** The diarization error comes from two AMI
+  meetings recorded in a room in 2005: no Meet audio, no Italian, and no reference on real calls.
+  On en-001, a lecture, the voices alternate as if there were two speakers; not checked yet.
+- **Language on four files.** The 5-window detection is checked on four recordings, none of them
+  mixed Italian and English.
+- **One machine.** Times and memory are measured on an M4 Pro with 24 GB. Macs with 8 GB and
+  Windows are not covered.
+- **Playback precision.** Seeking in WebKit was measured with Web Audio inside the page, which
+  adds a variable delay at start; the WAV lands "where expected" (within about a second), not
+  "to the hundredth".
+
+## Third-party models and data
+
+| What | Used for | Licence | Size |
+|---|---|---|---|
+| Whisper large-v3-turbo (MLX conversion) | transcript | MIT | 1.6 GB |
+| Parakeet TDT 0.6B v3 (MLX conversion) | doubtful words | CC BY 4.0 | 2.5 GB |
+| pyannote segmentation 3.0 (sherpa-onnx export) | who speaks | MIT | 6 MB |
+| WeSpeaker VoxCeleb ResNet34-LM | who speaks | CC BY 4.0 | 27 MB |
+| wordfreq | titles, glossary | Apache-2.0 (data CC BY-SA 4.0) | in the package |
+| CrisperWhisper 2.0 (optional, evaluation only) | comparison | non-commercial | not bundled |
+
+The models are downloaded once, when the person agrees in the app; the two voice models are
+checked by SHA-256 ([0029](docs/decisions/0029-install-from-the-repo-folder.md)).
 
 ## Reproducing the numbers
 
@@ -207,3 +301,9 @@ Reports are written to `results/` with the commit they were produced from.
 | [0025](docs/decisions/0025-glossary-learned-from-corrections.md) | Glossary learned from corrections: suggests, never corrects |
 | [0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md) | Who speaks: sherpa-onnx with our own grouping, fixable by hand |
 | [0027](docs/decisions/0027-release-speech-models-after-use.md) | Release the speech models after use |
+| [0028](docs/decisions/0028-native-mac-app-shell.md) | Native app: a Swift shell around the Python engine |
+| [0029](docs/decisions/0029-install-from-the-repo-folder.md) | Install from the repository folder; models asked on first start |
+| [0030](docs/decisions/0030-language-from-windows-and-asked-on-import.md) | Language: asked on import, detected on 5 windows |
+| [0031](docs/decisions/0031-provisional-text-after-whisper.md) | Provisional text once Whisper is done |
+| [0032](docs/decisions/0032-play-wav-copies-of-flac-calls.md) | The player gets WAV, calls stay FLAC |
+| [0033](docs/decisions/0033-text-grows-while-whisper-works.md) | The text grows while Whisper works |
