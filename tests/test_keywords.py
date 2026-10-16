@@ -48,9 +48,8 @@ def test_punctuation_breaks_a_phrase():
 
 
 def test_repeated_phrase_beats_a_long_one_said_once():
-    t = call(
-        "il baking soda", "il baking soda della domenica", "il baking soda", "una grande idea strana"
-    )
+    t = call("il baking soda", "il baking soda della domenica", "il baking soda",
+             "una grande idea strana")  # fmt: skip
     assert texts(t)[0] == "baking soda"
 
 
@@ -62,9 +61,7 @@ def test_elided_article_is_dropped():
 def test_verbs_and_generic_nouns_do_not_name_a_call():
     t = call("stiamo spingendo il concime", "facciamo una cosa sul concime", "per esempio")
     words = {w for p in texts(t) for w in p.split()}
-    assert (
-        "concime" in words and not {"stiamo", "spingendo", "facciamo", "cosa", "esempio"} & words
-    )
+    assert "concime" in words and not {"stiamo", "spingendo", "facciamo", "cosa", "esempio"} & words
 
 
 def test_a_doubtful_word_said_once_is_left_out_but_a_repeated_one_counts():

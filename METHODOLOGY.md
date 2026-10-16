@@ -311,9 +311,10 @@ phrase said at least twice replaces a better one it contains ("pizza margherita"
 | One coordination at most, and short | at most 60 characters, otherwise the first phrase alone |
 | Spelling | an acronym in capitals if written so at least once (2–6 letters); a capital initial for a word always written with one; lowercase otherwise |
 
-On the six transcripts the rules were checked on (a check, not a measure): "Pomodori e basilico",
-"Olive e DOP", "Ripest tomato and seeds", "Pizza dough and seeds", "Baking soda e
-semi antichi", "Peperoni rossi e gialli". 
+The rules were checked on six transcripts: the test set and the author's own trial
+recordings. Their titles are not reproduced, since the conversations are private; with
+invented calls, the rules give titles such as "Mulching naturale e semi antichi", "Ripest tomato and
+number of seeds" or "Peperoni rossi e gialli" (the examples in `tests/test_keywords.py`).
 
 ### 5. Measuring it on new calls
 
