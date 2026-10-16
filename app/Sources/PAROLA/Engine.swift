@@ -35,6 +35,28 @@ final class Engine: ObservableObject {
         return support.appendingPathComponent("P.A.R.O.L.A./calls", isDirectory: true)
     }
 
+    /// ~/Library/Logs/P.A.R.O.L.A./engine.log, appended to; over 2 MB it becomes engine.log.1.
+    static func openLog() -> FileHandle? {
+        let folder = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/P.A.R.O.L.A.", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let log = folder.appendingPathComponent("engine.log")
+        let size = (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
+        if size > 2_000_000 {
+            let old = folder.appendingPathComponent("engine.log.1")
+            try? FileManager.default.removeItem(at: old)
+            try? FileManager.default.moveItem(at: log, to: old)
+        }
+        if !FileManager.default.fileExists(atPath: log.path) {
+            FileManager.default.createFile(atPath: log.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: log) else { return nil }
+        handle.seekToEndOfFile()
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        handle.write("\n=== \(Date()) P.A.R.O.L.A. \(version) starting the engine\n".data(using: .utf8)!)
+        return handle
+    }
+
     func start() {
         guard process == nil else { return }
         guard let command = engineCommand(), FileManager.default.isExecutableFile(atPath: command) else {
@@ -56,7 +78,13 @@ final class Engine: ObservableObject {
         let path = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
         let extra = ["/opt/homebrew/bin", "/usr/local/bin"].filter { !path.contains($0) }
         env["PATH"] = (extra + path).joined(separator: ":")
+        env["PYTHONUNBUFFERED"] = "1"  // log lines reach engine.log at once, even before a crash
         p.environment = env
+        // What the engine prints, kept for bug reports (`parola doctor` shows its errors).
+        if let log = Engine.openLog() {
+            p.standardOutput = log
+            p.standardError = log
+        }
         p.terminationHandler = { [weak self] proc in
             Task { @MainActor in
                 guard let self, self.process === proc else { return }

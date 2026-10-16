@@ -91,6 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
         "needs `uv sync --group baselines`)",
     )
 
+    sub.add_parser("doctor", help="this Mac and the install, to paste into a bug report")
+
     sv = sub.add_parser("serve", help="local web UI for the recorded calls")
     sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
                     help="folder with the recordings (default: data/private/calls)")  # fmt: skip
@@ -356,6 +358,12 @@ def cmd_titles(args) -> int:
         return 0
     print(f"\n{kept} of {total} suggested titles kept, {renamed} renamed")
     return 0
+
+
+def cmd_doctor(args) -> int:
+    from parola import doctor
+
+    return doctor.main()
 
 
 def cmd_serve(args) -> int:
@@ -629,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
         ("transcribe", None): cmd_transcribe,
         ("record", None): cmd_record,
         ("serve", None): cmd_serve,
+        ("doctor", None): cmd_doctor,
         ("titles", None): cmd_titles,
         ("compress", None): cmd_compress,
         ("glossary", None): cmd_glossary,
