@@ -9,6 +9,8 @@ layer will be derived from the verbatim one, never the other way around.
 
 The command is `parola`. The old name `ilat` still works for now and prints a notice.
 
+How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
+
 Status: early development (Phase 1, see [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Requirements
