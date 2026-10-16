@@ -1,35 +1,35 @@
-# Punti dubbi: quale seconda trascrizione segnala meglio gli errori di turbo — 2026-10-16
+# Doubtful points: which second transcript best flags turbo's errors — 2026-10-16
 
-**Domanda.** Se trascriviamo ogni call anche con un secondo sistema e segnaliamo le parole di Whisper turbo che il secondo non conferma, quanti errori di turbo intercettiamo, e quanto bisogna ricontrollare?
+**Question.** If we also transcribe every call with a second system and flag the Whisper turbo words that the second does not confirm, how many of turbo's errors do we catch, and how much has to be checked again?
 
-**Metodo** (`ilat.doubt`).
-- Turbo, il motore predefinito, e la seconda trascrizione si allineano sui token di fedeltà, cioè senza esitazioni e ripetizioni ([0010](../docs/decisions/0010-fidelity-metric.md)). Una parola di turbo è segnalata se la seconda la sostituisce o non ce l'ha, o se la seconda ha parole in più proprio lì accanto.
-- Gli errori di turbo si calcolano allo stesso modo contro i riferimenti `adjudicated` di it-002 ed en-002: 374 parole con errore su 5761, cioè il **6,5%**. Segnalando parole a caso, la precisione sarebbe proprio il 6,5%.
-- Finestra 1 = si segnala anche una parola prima e una dopo, come farebbe un'evidenziazione nell'interfaccia.
+**Method** (`ilat.doubt`).
+- Turbo, the default engine, and the second transcript are aligned on fidelity tokens, that is without fillers and repetitions ([0010](../docs/decisions/0010-fidelity-metric.md)). A turbo word is flagged if the second transcript replaces it or does not have it, or if the second has extra words right next to it.
+- Turbo's errors are computed the same way against the `adjudicated` references of it-002 and en-002: 374 words with an error out of 5761, that is **6.5%**. Flagging words at random, the precision would be exactly 6.5%.
+- Window 1 = one word before and one after are flagged too, as a highlight in the interface would do.
 
-## Risultati
+## Results
 
-| Seconda opinione | Licenza | Errori di turbo intercettati (IT / EN) | Segnalazioni corrette | Parole da ricontrollare |
+| Second opinion | Licence | Turbo errors caught (IT / EN) | Correct flags | Words to check again |
 |---|---|---|---|---|
-| turbo, altro seme | MIT | 2–29% (IT 0%) | 48–53% | 0,3–4% |
-| turbo con prompt | MIT | 40% (50% / 33%) | 38% | 6,9% |
-| **Parakeet v3** | **CC BY** | **66%** (65% / 66%) | **35%** | **12,4%** |
-| large-v3 | MIT | 57% | 25% | 14,7% |
-| Parakeet ∪ turbo con prompt | libere | **79%** (78% / 79%) | 31% | 16,3% |
-| CrisperWhisper (*) | non commerciale | 84% | 59% | 9,3% |
+| turbo, another seed | MIT | 2–29% (IT 0%) | 48–53% | 0.3–4% |
+| turbo with prompt | MIT | 40% (50% / 33%) | 38% | 6.9% |
+| **Parakeet v3** | **CC BY** | **66%** (65% / 66%) | **35%** | **12.4%** |
+| large-v3 | MIT | 57% | 25% | 14.7% |
+| Parakeet ∪ turbo with prompt | free | **79%** (78% / 79%) | 31% | 16.3% |
+| CrisperWhisper (*) | non-commercial | 84% | 59% | 9.3% |
 
-Con finestra 1, Parakeet intercetta il 77% degli errori (precisione 20%, 25% delle parole), e Parakeet ∪ turbo con prompt l'86% (31% delle parole).
+With window 1, Parakeet catches 77% of the errors (precision 20%, 25% of the words), and Parakeet ∪ turbo with prompt 86% (31% of the words).
 
-(*) **CrisperWhisper è avvantaggiato per costruzione:** i riferimenti sono nati proprio dalle divergenze tra riferimento e CrisperWhisper. I numeri di Parakeet e di turbo con prompt invece sono equi: quei sistemi non sono intervenuti nella costruzione dei riferimenti.
+(*) **CrisperWhisper has an advantage by construction:** the references were built precisely from the disagreements between the reference and CrisperWhisper. The numbers for Parakeet and turbo with prompt, instead, are fair: those systems played no part in building the references.
 
-## Cosa vuol dire
+## What it means
 
-1. **Parakeet è la seconda opinione giusta per l'uso predefinito.** Ha licenza libera, è velocissimo (circa 1 minuto per un'ora di audio, quasi nulla in più rispetto a turbo) e, ricontrollando il 12% delle parole, intercetta due errori di turbo su tre. Le sue segnalazioni sono corrette 5 volte più spesso di quelle fatte a caso (35% contro 6,5%). Che come trascrittore sia peggiore di turbo, e che riscriva l'italiano, qui è un vantaggio: sbaglia in punti diversi da turbo.
-2. **Un altro seme di turbo non serve:** in italiano turbo è deterministico, quindi due semi danno lo stesso testo e nessuna segnalazione.
-3. **Aggiungere turbo con prompt** porta gli errori intercettati al 79%, ma raddoppia il tempo di trascrizione. È un'opzione per le call importanti.
-4. **Circa un terzo degli errori di turbo resta invisibile:** sono i punti in cui anche la seconda opinione sbaglia allo stesso modo. Lo stesso vale per gli errori comuni a turbo e al riferimento, che questa misura non può vedere.
+1. **Parakeet is the right second opinion for default use.** It has a free licence, it is very fast (about 1 minute per hour of audio, almost nothing on top of turbo) and, by checking 12% of the words again, it catches two turbo errors out of three. Its flags are correct 5 times more often than random ones (35% against 6.5%). That it is a worse transcriber than turbo, and that it rewords Italian, is an advantage here: it makes mistakes in different places from turbo.
+2. **Another turbo seed does not help:** in Italian turbo is deterministic, so two seeds give the same text and no flags.
+3. **Adding turbo with prompt** brings the errors caught to 79%, but doubles the transcription time. It is an option for important calls.
+4. **About a third of turbo's errors stay invisible:** they are the places where the second opinion makes the same mistake too. The same goes for errors shared by turbo and the reference, which this measure cannot see.
 
-## Limiti
+## Limits
 
-- Due file (45 minuti), riferimenti `adjudicated` costruiti a partire da turbo e CrisperWhisper.
-- I numeri dipendono dalla definizione di errore: si contano solo i token di fedeltà, per cui esitazioni e ripetizioni non contano.
+- Two files (45 minutes), `adjudicated` references built starting from turbo and CrisperWhisper.
+- The numbers depend on the definition of error: only fidelity tokens are counted, so fillers and repetitions do not count.

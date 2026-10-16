@@ -11,7 +11,9 @@ Apple Silicon Mac. It keeps what was said, as it was said: repetitions, truncati
 starts stay, and grammar is not fixed. Whisper large-v3-turbo writes the transcript (fidelity
 WER 4.8% in Italian and 5.3% in English on adjudicated references), a second model, Parakeet v3,
 marks the words it does not confirm (66% of turbo's errors flagged by marking 12% of the words),
-and the person reviews only those. Calls are recorded on two channels, so "me" and "the others"
+and the person reviews only those. Every correction is logged next to what the model had
+written, and these logs become a personal glossary that suggests the next corrections. Titles
+come from TF-IDF key phrases scored against the language, without a language model. Calls are recorded on two channels, so "me" and "the others"
 are never guessed; within a channel, voices are told apart by sherpa-onnx with our own spectral
 clustering (diarization error 30% on two AMI meetings). An hour of audio takes about 8 minutes on
 an M4 Pro, with a memory peak of about 6 GB. The test set is small (0.76 hours of adjudicated
@@ -120,25 +122,77 @@ either ([0030](docs/decisions/0030-language-from-windows-and-asked-on-import.md)
 [report](results/2026-10-16-language-detection.md)). When a file is imported the app asks its
 language first (Italiano, English or detect), since the person usually knows it.
 
-## Doubtful words
+## Doubtful words and the correction loop
 
-Each call is transcribed twice: by turbo and by Parakeet as a second opinion. The two are aligned
-on fidelity tokens, and turbo's words that Parakeet does not confirm are marked as doubtful
+The core idea: two models that fail in different places point at the words to check, the person
+checks only those, and every correction is kept, so the corrections become a corpus that suggests
+the next ones.
+
+### Two transcripts, their disagreements flagged
+
+Each call is transcribed by Whisper large-v3-turbo (the transcript the person reads) and by
+Parakeet TDT 0.6B v3, a second opinion with a different architecture (a transducer) and different
+training data ([0014](docs/decisions/0014-doubtful-words.md)).
+
+1. **Same tokens as the metric.** Both transcripts are cut into fidelity tokens: fillers and
+   repetitions are left out and numbers and spellings are normalised as in the fidelity WER
+   ([0010](docs/decisions/0010-fidelity-metric.md)). A disagreement on an "ehm" is not a doubt.
+2. **Alignment.** The two token sequences are aligned by edit distance, with the same alignment
+   the WER uses.
+3. **Flags.** A turbo word is doubtful when Parakeet replaces it or does not have it, and both
+   turbo words around a place where Parakeet has extra words are doubtful (something may be
+   missing there). No window around the flags by default.
+
+Which second opinion was measured against the adjudicated references of it-002 and en-002, where
+6.5% of turbo's words are errors (374 of 5761), so random flags would be right 6.5% of the time
 ([report](results/2026-10-16-doubt-analisi.md)):
 
-- **Parakeet catches 66% of turbo's errors** by marking 12% of the words. Its flags are right 35%
-  of the time, five times better than chance (6.5%). It works because it fails in different
-  places, and it adds about a minute per hour of audio.
-- About a third of the errors stay invisible: the places where both systems make the same
-  mistake.
-- On a real 30-minute call, recorded with consent, every error noticed in review had been flagged.
+| Second opinion | Licence | Turbo errors caught | Flags that are errors | Words to check |
+|---|---|---|---|---|
+| turbo, another seed | MIT | 2–29% | 48–53% | 0.3–4% |
+| turbo with a prompt | MIT | 40% | 38% | 6.9% |
+| **Parakeet v3** (chosen) | CC BY 4.0 | **66%** | **35%** | **12.4%** |
+| Whisper large-v3 | MIT | 57% | 25% | 14.7% |
+| Parakeet and turbo with a prompt | free | 79% | 31% | 16.3% |
 
-In the app, you jump from one doubtful word to the next, hear just that excerpt, and confirm or
-correct it. Terms you corrected at least twice (names, acronyms, words rare in the
-language spoken) come back as suggestions when you open a similar doubtful word; they are
-learned from your own edit logs only, start empty on every install and never change the text
-by themselves ([0025](docs/decisions/0025-glossary-learned-from-corrections.md)). Every edit is logged with the model's original words and can be undone; the
-untouched model output is kept next to the transcript.
+Parakeet catches two errors out of three by marking one word in eight, its flags are five times
+better than chance, and it adds about a minute per hour of audio. About a third of the errors
+stay invisible: the places where both models make the same mistake. On a real 30-minute call,
+recorded with consent, every error noticed in review had been flagged.
+
+### Review
+
+In the app the person jumps from one doubtful passage to the next (N and P), hears just that
+excerpt (until one second after its last word), and confirms it (Enter on the unchanged text) or
+types the correction. Any other word can be edited with a double click, and everything can be
+undone.
+
+### Corrections become a corpus
+
+Every edit is logged in the transcript with what the model had written (`before`), what the
+person wrote (`text`), where, and its kind (correction, confirmation, voice change); the model's
+untouched output is kept next to it as `<name>.asr.json`. So each reviewed call adds pairs of
+"what the model heard" and "what was said", and labels its flags as right or wrong.
+
+Today this corpus feeds a personal glossary ([0025](docs/decisions/0025-glossary-learned-from-corrections.md)):
+
+| Step | Rule | Parameter |
+|---|---|---|
+| Which corrections | Only terms: a name or acronym (a capital inside the word, or all capitals with two letters or more), a word with digits or a hyphen, or a word rare in the language of its sentence; case and punctuation changes are ignored | rare: Zipf < 3.5 (wordfreq); up to 4 words |
+| When it is learned | After the same term was corrected that many times: once may be a slip | 2 corrections |
+| When it is suggested | When the person opens a doubtful word: first the terms whose misheard form it is exactly ("orto lap" was corrected to "Orto-Lab" before), then terms with a close spelling | letter similarity ≥ 0.75 (difflib) |
+| What is shown | The whole span with the term in place, best first; the person accepts one or not | up to 3 |
+
+The glossary is read from the edit logs each time, so an undone correction is forgotten with it.
+It starts empty on every install, lives only next to the calls (never in git), and never changes
+the text by itself. Giving the same terms to Whisper as a prompt was measured and rejected: it
+fixed about half of the domain terms but raised the fidelity WER from 5.1 to 8.6–9.5
+([report](results/2026-10-16-glossary.md)).
+
+Not measured yet, and the reason to keep the corpus: the confirmations measure the flags'
+precision on real calls instead of on the test set; reviewed calls can become references; with
+the participants' consent, the pairs are training data for the fine-tuning parked in
+[0006](docs/decisions/0006-english-only-training-first.md).
 
 ## Recording calls
 
@@ -207,22 +261,85 @@ there is no "Io / Altri" split and no echo removal; the voices are told apart as
 - **Clean version:** only removes material (fillers, repetitions, false starts) by explicit rules,
   never rewrites. A trained classifier is paused
   ([0012](docs/decisions/0012-clean-layer-by-labeling.md)).
-- **Title:** key noun phrases chosen without a language model
-  ([0020](docs/decisions/0020-title-from-key-phrases.md),
-  [0022](docs/decisions/0022-titles-read-like-titles.md),
-  [0023](docs/decisions/0023-title-rules-that-generalize.md)), with rules that do not depend on
-  any particular call:
-  - phrases are cut at closed-class words (articles, prepositions, pronouns, auxiliaries,
-    numbers, fillers) and at the most frequent words of Italian or English (Zipf ≥ 6);
-  - they are scored by TF-IDF against the language: frequent in the call, rare in general;
-  - only noun phrases count: said after a determiner at least 10% of the time, or a name or an
-    acronym. This keeps out discourse markers such as "esatto" or "ciao".
+- **Title:** see the next section.
 
-  The title joins the two best phrases ("Peperoni rossi e gialli"). Each call keeps the
-  suggested title apart from the one the user chose, and `parola titles` compares them, so the
-  rules are measured on calls they were never tuned on. Word frequencies come from
-  [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (code Apache-2.0, data
-  CC BY-SA 4.0).
+## Titles from key phrases
+
+A call gets a suggested title from its own words, without a language model: a RAKE-style
+extraction (Rose et al., 2010) with TF-IDF against the language
+([0020](docs/decisions/0020-title-from-key-phrases.md),
+[0022](docs/decisions/0022-titles-read-like-titles.md),
+[0023](docs/decisions/0023-title-rules-that-generalize.md)). Every rule is general: lists of
+closed classes and frequency thresholds, nothing tuned on a particular call. The parameters were
+chosen by hand and are declared here; none was tuned on the six transcripts used to check them.
+
+### 1. Candidate phrases
+
+The text is cut into runs at every word that cannot belong to a topic:
+
+| Cut at | Detail |
+|---|---|
+| Closed classes, Italian and English | Articles, prepositions (articulated ones too), pronouns, conjunctions, the forms of *essere, avere, stare, potere, dovere, volere* and of *be, have, do* and the modals, listed in full |
+| Fillers and discourse markers | The fillers of [`docs/conventions.md`](docs/conventions.md); markers such as *allora, quindi, cioè, insomma, praticamente, basically, anyway* |
+| Number words | *uno, due, … mille, primo*; *one, two, … first* |
+| Adverbs | Words ending in *-mente* (over 7 letters) or *-ly* (over 5 letters, so "Italy" stays) |
+| Very frequent words | Zipf ≥ 6 in Italian **or** English (more than one in a thousand words: *cosa, think, because*), the frequency-based stop list RAKE itself suggests; either language, because calls mix them |
+| Other | Punctuation, words with digits, words under 3 letters unless an acronym, and doubtful words |
+
+A doubtful word is kept only if it was transcribed the same way at least 3 times: once it may be
+a mistake, ten identical "baking soda" are the subject of the call.
+
+A run keeps 1 to 3 content words. "di"/"of" (and the articulated forms of "di") may join two
+content words inside it ("raccolta delle olive", "number of seeds"); elided forms are split
+("dell'impatto" gives "impatto"). A run longer than 3 content words counts word by word, and the
+stretches of two or more content words inside a run also count ("vaso rialzato" inside "vaso
+rialzato di ottobre").
+
+### 2. Only noun phrases
+
+A phrase counts as a topic if at least 10% of the times it is said it comes right after a
+determiner (article, articulated preposition, demonstrative, possessive, quantifier: "il basilico",
+"the ripest tomato"), or if it is a name or an acronym, which go without one ("Portogallo",
+"DOP"). This keeps out discourse words such as "esatto" or "ciao" without listing them.
+
+### 3. Score
+
+Singular and plural are counted together (a final vowel after a consonant, or a final *s*, is
+dropped for counting: *pomodoro/pomodori*, *seed/seeds*). Then:
+
+score(phrase) = n × Σ over its content words w of f(w) × (9 − Zipf(w))
+
+where n is how many times the phrase is said, f(w) how many times the word is said in the call
+(the TF), and 9 − Zipf(w) is −log₁₀ of the word's frequency in the language it was mostly said in
+(Zipf is log₁₀ per billion words), the IDF against the language. So "basil" or "DOP" beat
+"realtà" or "lavoro" with no list of generic words. Ties go to the phrase said more often.
+
+The phrases are taken best first, skipping one contained in a phrase already taken; a longer
+phrase said at least twice replaces a better one it contains ("pizza margherita" over "pizza").
+
+### 4. The title
+
+| Rule | Parameter |
+|---|---|
+| Too short to tell: no title | under 60 content words |
+| Phrases that can enter | said at least twice; the best 6 |
+| Built like a title, not a tag list | the 2 best phrases joined by "e" or "and" (the call's main language) |
+| Same head, different modifier, coordinated | "peperoni rossi" + "peperoni gialli" → "Peperoni rossi e gialli" |
+| One coordination at most, and short | at most 60 characters, otherwise the first phrase alone |
+| Spelling | an acronym in capitals if written so at least once (2–6 letters); a capital initial for a word always written with one; lowercase otherwise |
+
+On the six transcripts the rules were checked on (a check, not a measure): "Pomodori e basilico",
+"Olive e DOP", "Ripest tomato and seeds", "Pizza dough and seeds", "Baking soda e
+semi antichi", "Peperoni rossi e gialli".
+
+### 5. Measuring it on new calls
+
+Each call keeps the suggested title (`title_suggested`) apart from the one the person chose
+(`title`), and `parola titles` lists how many suggestions were kept and, for the others, the
+suggestion next to the chosen title. The rules stay frozen until there are enough new calls to
+judge them; so far 2 of 2 suggestions on new calls were kept. Word frequencies come from
+[wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (code Apache-2.0, data
+CC BY-SA 4.0).
 
 ## Limitations
 

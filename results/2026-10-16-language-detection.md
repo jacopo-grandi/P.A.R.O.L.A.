@@ -1,24 +1,24 @@
-# Rilevamento della lingua — 2026-10-16
+# Language detection — 2026-10-16
 
-**Perché.** en-001 (un'ora in inglese, chi parla è italiano) importata con lingua "Auto" è uscita in italiano: Whisper l'ha tradotta e storpiata per un'ora intera ("Il più famoso algoritmo di clustering…"), quasi ogni riga segnata come dubbia. La lingua veniva decisa una volta sola, sui primi 30 s di parlato incollati insieme (i tratti con suono dati dal VAD).
+**Why.** en-001 (an hour in English, the speaker is Italian), imported with language "Auto", came out in Italian: Whisper translated and mangled it for a whole hour ("Il più famoso algoritmo di clustering…"), with almost every line marked as doubtful. The language was decided only once, on the first 30 s of speech glued together (the stretches with sound given by the VAD).
 
-**Come.** Probabilità di lingua di Whisper large-v3-turbo (`mlx_whisper.decoding.detect_language`, fp16) sui 4 file del test set, con tre metodi:
+**How.** Language probabilities from Whisper large-v3-turbo (`mlx_whisper.decoding.detect_language`, fp16) on the 4 files of the test set, with three methods:
 
-1. **incollato** (il metodo di prima): i tratti con suono dei primi 30 s di parlato, concatenati;
-2. **primi 30 s** così come sono (il comportamento predefinito di Whisper);
-3. **5 finestre**: 30 s di audio così com'è a partire da 5 tratti con suono presi a distanza regolare nell'elenco, probabilità mediate, solo tra `it` ed `en`.
+1. **glued** (the previous method): the stretches with sound from the first 30 s of speech, concatenated;
+2. **first 30 s** as they are (Whisper's default behaviour);
+3. **5 windows**: 30 s of audio as it is, starting from 5 stretches with sound taken at regular intervals in the list, probabilities averaged, only between `it` and `en`.
 
-**Risultati.**
+**Results.**
 
-| File | Lingua | Incollato | Primi 30 s | 5 finestre (ognuna) |
+| File | Language | Glued | First 30 s | 5 windows (each) |
 |---|---|---|---|---|
-| it-001 | it | it (it 1,00) | it (it 1,00) | it (it 1,00): it it it it it |
-| it-002 | it | it (it 1,00) | it (it 1,00) | it (it 1,00): it it it it it |
-| en-001 | en | **it** (it 0,50, en 0,43) | en (en 0,92) | en (en 0,95): en en en en en |
-| en-002 | en | en (en 1,00) | en (en 0,48, it 0,00) | en (en 0,76): en en en en en |
+| it-001 | it | it (it 1.00) | it (it 1.00) | it (it 1.00): it it it it it |
+| it-002 | it | it (it 1.00) | it (it 1.00) | it (it 1.00): it it it it it |
+| en-001 | en | **it** (it 0.50, en 0.43) | en (en 0.92) | en (en 0.95): en en en en en |
+| en-002 | en | en (en 1.00) | en (en 0.48, it 0.00) | en (en 0.76): en en en en en |
 
-Su en-001 le finestre di audio grezzo dicono inglese ovunque (0,86–1,00 su 14 finestre da 0 a 3521 s), tranne quella a 30 s (en 0,55, it 0,39). L'incollato sposta la decisione sull'italiano: i pezzi brevi uniti sembrano contare più l'accento che la lingua.
+On en-001 the raw audio windows say English everywhere (0.86–1.00 on 14 windows from 0 to 3521 s), except the one at 30 s (en 0.55, it 0.39). Gluing moves the decision to Italian: short pieces joined together seem to weigh the accent more than the language.
 
-**Scelta.** 5 finestre (decisione [0030](../docs/decisions/0030-language-from-windows-and-asked-on-import.md)): 4 su 4, sempre con margine. Il modulo finale (`parola.asr.language.detect`), provato sugli stessi 4 file, dà 4 su 4. Su it-002 ed en-002, i due file con riferimento, la lingua scelta non cambia, quindi i WER misurati restano quelli di `results/2026-10-15-vad.md`.
+**Decision.** 5 windows (decision [0030](../docs/decisions/0030-language-from-windows-and-asked-on-import.md)): 4 out of 4, always with a margin. The final module (`parola.asr.language.detect`), tried on the same 4 files, gives 4 out of 4. On it-002 and en-002, the two files with a reference, the chosen language does not change, so the measured WERs stay those of `results/2026-10-15-vad.md`.
 
-**Limiti.** Quattro file sono pochi; manca un file misto IT/EN in cui la lingua prevalente sia incerta. Costo misurato su en-001: 1,9 s (lettura dell'audio compresa, modello già caricato) su un M4 Pro, contro circa 7 minuti di trascrizione.
+**Limits.** Four files are few; there is no mixed IT/EN file in which the main language is uncertain. Cost measured on en-001: 1.9 s (reading the audio included, model already loaded) on an M4 Pro, against about 7 minutes of transcription.

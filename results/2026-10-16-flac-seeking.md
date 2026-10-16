@@ -1,18 +1,18 @@
-# Salti nell'audio: FLAC in WebKit — 2026-10-16
+# Seeking in the audio: FLAC in WebKit — 2026-10-16
 
-**Perché.** Su en-001 (un'ora) nell'app nativa testo e audio non coincidevano, anche cliccando una parola. I tempi della trascrizione non c'entrano: riascoltando con Whisper 12 punti sparsi, tagliati con ffmpeg dal FLAC e dall'originale m4a, i due tagli danno lo stesso testo in tutti i 12 punti (somiglianza col testo trascritto 0,45–1,00, identica tra FLAC e m4a). Il problema è dove il lettore salta.
+**Why.** On en-001 (an hour) in the native app, text and audio did not match, even when clicking a word. The transcript's times are not the cause: transcribing 12 scattered points again with Whisper, cut with ffmpeg from the FLAC and from the original m4a, the two cuts give the same text at all 12 points (similarity with the transcribed text 0.45–1.00, identical between FLAC and m4a). The problem is where the player lands.
 
-**Come.** Un file di prova di un'ora (16 kHz mono, codificato come `parola compress`): rumore forte dal secondo 5 al 30 di ogni minuto, rumore debole dal 40 al 50, silenzio altrove, e un bip a 1 kHz di 0,3 s esattamente su ogni minuto. Una pagina salta a qualche secondo prima di un bip, fa partire l'audio e ascolta con Web Audio quando arriva il bip. Provata in Chromium (il pannello browser) e in una WKWebView come quella dell'app.
+**How.** A one-hour test file (16 kHz mono, encoded like `parola compress`): loud noise from second 5 to 30 of each minute, quiet noise from 40 to 50, silence elsewhere, and a 0.3 s beep at 1 kHz exactly on every minute. A page jumps to a few seconds before a beep, starts the audio and listens with Web Audio for when the beep arrives. Tried in Chromium (the browser pane) and in a WKWebView like the app's.
 
-**Risultati.**
+**Results.**
 
-| Motore | File | Salti | Esito |
+| Engine | File | Jumps | Outcome |
 |---|---|---|---|
-| Chromium | FLAC | 5, da 5 a 59 min | bip esatto: errore 0,01–0,02 s |
-| WebKit | WAV | 6, poi 8 ripetuti | bip dove atteso (2,9–3,6 s dopo un salto di 3 s); alcune letture a 0,5 s sono il bip precedente rimasto nel buffer del test |
-| WebKit | FLAC | 5 + 6 + 8 | bip quasi mai sentito entro 8 s; una volta 23 s più avanti, una volta quasi giusto (−0,9 s) |
-| WebKit | FLAC con SEEKTABLE (360 punti, uno ogni 10 s, campioni identici) | 6 | come senza: bip mai sentito |
+| Chromium | FLAC | 5, from 5 to 59 min | exact beep: error 0.01–0.02 s |
+| WebKit | WAV | 6, then 8 repeated | beep where expected (2.9–3.6 s after a 3 s jump); some readings at 0.5 s are the previous beep left in the test's buffer |
+| WebKit | FLAC | 5 + 6 + 8 | beep almost never heard within 8 s; once 23 s later, once almost right (−0.9 s) |
+| WebKit | FLAC with SEEKTABLE (360 points, one every 10 s, identical samples) | 6 | as without: beep never heard |
 
-**Scelta.** Decisione [0032](../docs/decisions/0032-play-wav-copies-of-flac-calls.md): le call restano FLAC sul disco, al lettore va una copia WAV decodificata all'apertura. Su en-001: 0,6 s la prima volta, poi subito.
+**Decision.** Decision [0032](../docs/decisions/0032-play-wav-copies-of-flac-calls.md): calls stay FLAC on disk, and the player gets a WAV copy decoded when the call is opened. On en-001: 0.6 s the first time, then immediate.
 
-**Limiti.** La prova in WebKit misura con Web Audio dentro la pagina, che aggiunge un ritardo variabile all'avvio; per questo il WAV è "dove atteso" e non "esatto al centesimo". La catena intera (server → WAV → WebKit) non è stata misurata col bip; i suoi pezzi sì.
+**Limits.** The WebKit test measures with Web Audio inside the page, which adds a variable delay at start; this is why the WAV is "where expected" and not "exact to the hundredth". The whole chain (server → WAV → WebKit) was not measured with the beep; its pieces were.

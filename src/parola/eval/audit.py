@@ -215,13 +215,13 @@ def summarize(answers: dict) -> str:
     counts: dict[str, Counter[str]] = defaultdict(Counter)
     for item in answers["items"]:
         counts[item["category"]][item.get("answer") or "senza risposta"] += 1
-    lines = [f"Verifica di {answers.get('system', '?')}:", ""]
-    lines.append("| Categoria | vero | falso | non so | senza risposta | % vero (su vero+falso) |")
+    lines = [f"Audit of {answers.get('system', '?')}:", ""]
+    lines.append("| Category | true | false | don't know | no answer | % true (of true+false) |")
     lines.append("|---|---|---|---|---|---|")
     total: Counter[str] = Counter()
-    for cat in [*CATEGORIES, "totale"]:
-        c = total if cat == "totale" else counts.get(cat, Counter())
-        if cat != "totale":
+    for cat in [*CATEGORIES, "total"]:
+        c = total if cat == "total" else counts.get(cat, Counter())
+        if cat != "total":
             total.update(c)
         judged = c["vero"] + c["falso"]
         share = f"{c['vero'] / judged * 100:.0f}%" if judged else "—"

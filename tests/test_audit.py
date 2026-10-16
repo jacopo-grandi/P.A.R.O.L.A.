@@ -69,7 +69,7 @@ def test_write_page_and_summarize(tmp_path):
     text = audit.summarize(answers)
     assert "| repetition | 2 | 1 | 0 | 0 | 67% |" in text
     assert "| filler | 0 | 0 | 1 | 0 | — |" in text
-    assert "| totale | 2 | 1 | 1 | 1 | 67% |" in text
+    assert "| total | 2 | 1 | 1 | 1 | 67% |" in text
 
 
 @requires_ffmpeg

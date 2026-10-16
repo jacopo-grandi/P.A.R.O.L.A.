@@ -1,27 +1,27 @@
-# Come si annota un riferimento
+# How to annotate a reference
 
-Guida pratica per trascrivere a mano il test set secondo [conventions.md](conventions.md).
+A practical guide to transcribing the test set by hand according to [conventions.md](conventions.md).
 
-## Flusso
+## Workflow
 
 ```bash
-uv run parola transcribe data/private/call.m4a          # -> call.json, call.txt (bozza del modello)
-uv run parola annotate draft data/private/call.json     # -> call.ann.txt (da correggere)
-# ...correggi call.ann.txt ascoltando l'audio...
-uv run parola annotate import data/private/call.ann.txt # -> call.ref.json (riferimento validato)
+uv run parola transcribe data/private/call.m4a          # -> call.json, call.txt (model draft)
+uv run parola annotate draft data/private/call.json     # -> call.ann.txt (to correct)
+# ...correct call.ann.txt while listening to the audio...
+uv run parola annotate import data/private/call.ann.txt # -> call.ref.json (validated reference)
 ```
 
-1. Apri `call.ann.txt` in un editor e correggi **ascoltando l'audio**: testo, confini dei segmenti, lingua e codici.
-2. Quando hai controllato tutto il file, cambia `# status: draft` in `# status: reviewed`. Finché resta `draft` l'import rifiuta il file: così l'output del modello non può finire nel test set per errore.
-3. `import` controlla il file con le regole delle convenzioni. Se ci sono errori, non scrive nulla e indica il segmento e la parola da sistemare. Gli avvisi (per esempio cifre nel testo) non bloccano.
-4. Nel manifest `data/manifests/test.jsonl`, nella riga del file, imposta `"reference": "data/private/testset/<id>.ref.json"` e `"reference_quality": "gold"` (o `"silver"` se le disfluenze non sono state verificate ascoltando tutto l'audio; vedi conventions.md §4) (o aggiungi una riga nuova per una registrazione nuova). Poi controlla tutto con:
+1. Open `call.ann.txt` in an editor and correct it **while listening to the audio**: text, segment boundaries, language and codes.
+2. When you have checked the whole file, change `# status: draft` to `# status: reviewed`. As long as it stays `draft`, the import refuses the file: this way the model's output cannot end up in the test set by mistake.
+3. `import` checks the file against the rules of the conventions. If there are errors, it writes nothing and points to the segment and the word to fix. Warnings (for example digits in the text) do not block it.
+4. In the manifest `data/manifests/test.jsonl`, in the file's row, set `"reference": "data/private/testset/<id>.ref.json"` and `"reference_quality": "gold"` (or `"silver"` if the disfluencies were not checked by listening to all the audio; see conventions.md §4) (or add a new row for a new recording). Then check everything with:
    ```bash
    uv run parola manifest check data/manifests/test.jsonl --files
    ```
 
-Tutti i file restano in `data/private/`, che è ignorato da git.
+All files stay in `data/private/`, which is ignored by git.
 
-## Formato
+## Format
 
 ```
 # parola-annotation 1
@@ -36,59 +36,59 @@ Ehm, ci vediamo lunedì,|fs no|ed martedì per la call|en.
 Sì,|red sì.
 ```
 
-- **Intestazione del segmento:** `[inizio - fine]`, poi `lang=it|en` (obbligatorio). Opzionali: `channel=mic|system|mixed`, `speaker=…`, e i flag `overlap` e `bc` (tutto il segmento è un backchannel).
-- **Testo:** può occupare più righe. Un blocco si separa dal successivo con una riga vuota.
-- **Segmenti:** per spezzarne uno, copia l'intestazione e aggiusta i tempi. Per eliminarne uno, cancella tutto il blocco.
+- **Segment header:** `[start - end]`, then `lang=it|en` (required). Optional: `channel=mic|system|mixed`, `speaker=…`, and the flags `overlap` and `bc` (the whole segment is a backchannel).
+- **Text:** it can span several lines. A block is separated from the next one by an empty line.
+- **Segments:** to split one, copy the header and adjust the times. To delete one, delete the whole block.
 
-### Codici per parola
+### Codes per word
 
-Si aggiungono con `|` subito dopo la parola, prima o dopo la punteggiatura (`lunedì,|fs` e `lunedì|fs,` sono equivalenti). Una parola può averne più di uno: `call|en|rep`.
+They are added with `|` right after the word, before or after the punctuation (`lunedì,|fs` and `lunedì|fs,` are equivalent). A word can have more than one: `call|en|rep`.
 
-| Codice | Tag | Esempio |
+| Code | Tag | Example |
 |---|---|---|
-| `f` | filler (solo per `ah`, `oh`, che non sono automatici) | `ah|f` |
-| `-f` | annulla il filler automatico | `eh|-f` (es. "eh" con valore di risposta) |
+| `f` | filler (only for `ah`, `oh`, which are not automatic) | `ah|f` |
+| `-f` | cancels the automatic filler | `eh|-f` (e.g. "eh" used as an answer) |
 | `rep` | repetition | `il,|rep il progetto` |
 | `red` | reduplication | `sì,|red sì` |
 | `fs` | false_start | `lunedì,|fs no|ed martedì` |
-| `ed` | edit_term | (vedi sopra) |
-| `bc` | backchannel (singola parola) | `mh|bc` |
-| `en` / `it` | lingua diversa da quella del segmento | `call|en` |
+| `ed` | edit_term | (see above) |
+| `bc` | backchannel (single word) | `mh|bc` |
+| `en` / `it` | language other than the segment's | `call|en` |
 
-`{più parole}|fs` applica i codici a tutte le parole tra le graffe: `{Perché noi abbiamo}|fs... il cliente`.
+`{several words}|fs` applies the codes to all the words between the braces: `{Perché noi abbiamo}|fs... il cliente`.
 
-### Tag automatici
+### Automatic tags
 
-L'import aggiunge da solo questi tag:
+The import adds these tags by itself:
 
-- `truncated` alle parole che finiscono con `-` (`propo-`);
-- `nonverbal` a `[risata]`, `[tosse]`, `[rumore]`, `[silenzio]`;
-- `uncertain` a `(parola?)` o `(due parole?)`, salvando nel JSON le parole senza parentesi;
-- `filler` a `eh`, `ehm`, `mh`, `uh`, `um`, `hmm`, ma non quando sono seguiti da `?` o stanno in un segmento `bc`.
+- `truncated` to words ending in `-` (`propo-`);
+- `nonverbal` to `[risata]`, `[tosse]`, `[rumore]`, `[silenzio]`;
+- `uncertain` to `(parola?)` or `(due parole?)`, saving the words without parentheses in the JSON;
+- `filler` to `eh`, `ehm`, `mh`, `uh`, `um`, `hmm`, but not when they are followed by `?` or are in a `bc` segment.
 
-`[inaudibile]` non prende tag.
+`[inaudibile]` gets no tag.
 
-### Cosa controllare nella bozza del modello
+### What to check in the model draft
 
-Whisper sbaglia tipicamente in questi punti:
+Whisper typically makes mistakes in these places:
 
-- **toglie le esitazioni:** vanno reinserite, perché sono l'obiettivo principale del test set;
-- **scrive "okay" o "OK":** va scritto `ok`;
-- **scrive i numeri in cifre:** vanno in lettere;
-- **sbaglia nomi e termini inglesi** (`Mistral`, `Le Chat`): vanno corretti e marcati `|en`;
-- **sbaglia i confini dei segmenti:** `annotate draft` unisce già i segmenti separati da pause fino a 1 s (al massimo 30 s; `--no-merge` per disattivarlo), ma **non sa dove cambia il parlante**: lì il segmento va spezzato a mano;
-- **unisce o duplica le ripetizioni:** si sentono solo all'ascolto.
+- **it removes fillers:** they must be put back, because they are the main goal of the test set;
+- **it writes "okay" or "OK":** it must be written `ok`;
+- **it writes numbers as digits:** they go in words;
+- **it gets names and English terms wrong** (`Mistral`, `Le Chat`): they must be corrected and marked `|en`;
+- **it gets segment boundaries wrong:** `annotate draft` already joins segments separated by pauses of up to 1 s (at most 30 s; `--no-merge` to turn it off), but **it does not know where the speaker changes**: there the segment must be split by hand;
+- **it merges or duplicates repetitions:** you only hear them by listening.
 
-## Riferimenti `adjudicated` (ascolto solo delle divergenze)
+## `adjudicated` references (listening only to the disagreements)
 
-Invece di correggere tutta una bozza, si ascoltano solo i punti in cui due trascrizioni non sono d'accordo ([decisione 0009](decisions/0009-two-models-and-crisperwhisper-license.md), [verifica](../results/2026-10-15-audit-crisper.md)).
+Instead of correcting a whole draft, you listen only to the points where two transcripts do not agree ([decision 0009](decisions/0009-two-models-and-crisperwhisper-license.md), [audit](../results/2026-10-15-audit-crisper.md)).
 
 ```bash
-uv run parola adjudicate build it-002          # pagina in data/private/adjudicate/it-002/index.html
+uv run parola adjudicate build it-002          # page in data/private/adjudicate/it-002/index.html
 uv run parola adjudicate apply it-002 ~/Downloads/adjudication-it-002.json
 ```
 
-- Se il file ha già un riferimento, si confronta quello (A) con CrisperWhisper (B). Altrimenti si parte da CrisperWhisper (A) e lo si confronta con Whisper turbo (B).
-- **Regola automatica** (Jacopo, 2026-10-15): le divergenze in cui CrisperWhisper aggiunge una ripetizione, una troncata o parole in più al testo di A sono accettate (B) senza ascolto. Le aggiunte di altre parole e di esitazioni sono accettate con un controllo a campione (una su sei), mentre le sostituzioni e le parole tolte si ascoltano sempre. Se un controllo dà meno del 90% di accordo con B, `apply` si ferma: si rigenera con `--listen <tipo>` e le risposte già date restano.
-- Per ogni divergenza: <kbd>spazio</kbd> riascolta, <kbd>1</kbd> A, <kbd>2</kbd> B, <kbd>3</kbd> scrivi il testo giusto. Senza risposta vale A.
-- `apply` scrive `<id>.ref.json` (il riferimento precedente resta come `<id>.ref.<qualità>.json`) e aggiorna il manifest: `reference_quality: adjudicated` e `derived_from: ["crisperwhisper"]`. Le esitazioni prese da CrisperWhisper sono ricondotte all'inventario della lingua (`um` → `ehm` in italiano).
+- If the file already has a reference, that one (A) is compared with CrisperWhisper (B). Otherwise it starts from CrisperWhisper (A) and compares it with Whisper turbo (B).
+- **Automatic rule** (Jacopo, 2026-10-15): disagreements where CrisperWhisper adds a repetition, a truncated word or extra words to A's text are accepted (B) without listening. Additions of other words and of fillers are accepted with a spot check (one in six), while substitutions and removed words are always listened to. If a check gives less than 90% agreement with B, `apply` stops: rebuild with `--listen <kind>`, and the answers already given are kept.
+- For each disagreement: <kbd>space</kbd> plays it again, <kbd>1</kbd> A, <kbd>2</kbd> B, <kbd>3</kbd> type the right text. With no answer, A applies.
+- `apply` writes `<id>.ref.json` (the previous reference is kept as `<id>.ref.<quality>.json`) and updates the manifest: `reference_quality: adjudicated` and `derived_from: ["crisperwhisper"]`. Fillers taken from CrisperWhisper are mapped to the language's inventory (`um` → `ehm` in Italian).
