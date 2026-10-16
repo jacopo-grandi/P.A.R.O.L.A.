@@ -4,11 +4,13 @@
 // "mixed": an imported file, every voice on one track, so no side to name.
 const LABELS = { mic: "Io", system: "Altri", mixed: "" };
 const LEAD = 0.25;         // start playing a little before the word
+const SPEEDS = [1, 1.25, 1.5, 2, 0.75];  // one click moves to the next
 const EXCERPT_TAIL = 1.0;  // a doubtful run plays until this long after its last word
 const LANGS = [["", "Auto"], ["it", "IT"], ["en", "EN"]];
 
 const $main = document.getElementById("main");
-const $calls = document.getElementById("calls");
+const $calls = document.getElementById("list");
+const $pending = document.getElementById("pending");
 const $search = document.getElementById("search");
 const $recorder = document.getElementById("recorder");
 const $audio = document.getElementById("audio");
@@ -276,6 +278,27 @@ let stopAt = null;   // {channel, t}: stop playback there (excerpt of a doubtful
 let lastChannel = null;
 let onlyDoubts = false;
 let view = {};       // elements of the call view that are updated in place
+
+// Playback speed, remembered in this browser only (a convenience, not data).
+let speed = 1;
+try {
+  const saved = Number(localStorage.getItem("speed"));
+  if (SPEEDS.includes(saved)) speed = saved;
+} catch (e) { /* storage blocked: start at 1x */ }
+
+function speedLabel(v) {
+  return `${String(v).replace(".", ",")}×`;
+}
+
+function setSpeed(v) {
+  speed = v;
+  for (const p of Object.values(players)) p.playbackRate = v;
+  try { localStorage.setItem("speed", String(v)); } catch (e) { /* not remembered */ }
+  if (view.speed) {
+    view.speed.textContent = speedLabel(v);
+    view.speed.classList.toggle("on", v !== 1);
+  }
+}
 
 function stopAll() {
   for (const p of Object.values(players)) p.pause();
@@ -545,7 +568,14 @@ async function render(data, after) {
          el("b", {}, String(runs.length)), "da rivedere",
          iconButton("next", "Prossima dubbia (N)", () => jump(1)))
     : el("div", { class: "review clear" }, el("b", {}, "✓"), "Tutto rivisto");
-  const player = el("footer", { class: "player" }, view.play, view.clock, timeline, review);
+  view.speed = el("button", { class: "speed", title: "Velocità di riproduzione",
+                              "aria-label": "Velocità di riproduzione",
+                              onclick: () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1)
+                                                             % SPEEDS.length]) },
+    speedLabel(speed));
+  view.speed.classList.toggle("on", speed !== 1);
+  const player = el("footer", { class: "player" }, view.play, view.clock, timeline, view.speed,
+    review);
 
   $main.replaceChildren(head, view.scroll, player);
   renderHeading();
@@ -584,6 +614,9 @@ async function showRecording(name) {
     a.addEventListener("timeupdate", () => follow(channel));
     a.addEventListener("play", updatePlayButton);
     a.addEventListener("pause", updatePlayButton);
+    a.playbackRate = speed;
+    // Some browsers reset the rate when the source loads.
+    a.addEventListener("loadedmetadata", () => { a.playbackRate = speed; });
     players[channel] = a;
     $audio.append(a);
   }
@@ -615,7 +648,6 @@ let recMode = null;     // what the recorder shows now, to rebuild only when it 
 let liveViews = [];     // the recorder in the sidebar and, if open, in the floating window
 let pip = null;         // floating window (Document Picture-in-Picture)
 let pollTimer = null;
-const busy = {};       // progress elements while transcribing
 
 async function recAction(action, body) {
   try {
@@ -669,10 +701,12 @@ function buildLive(floating) {
 }
 
 function renderRecorder() {
-  if (uploading) return;  // the upload progress owns the recorder box until the file is sent
   const st = recState;
-  const mode = st.state === "recording" ? "recording"
-             : st.state === "transcribing" ? "transcribing" : `idle:${st.state}:${st.name}`;
+  // While a file uploads or a call is transcribed the controls stay, disabled: the progress is
+  // on the call itself, at the top of the list (renderPending).
+  const busy = !!uploading || st.state === "transcribing";
+  const mode = st.state === "recording" ? "recording" : `idle:${st.state}:${st.name}:${busy}`;
+  renderPending();
   if (mode !== recMode) {
     recMode = mode;
     liveViews = liveViews.filter(v => v.floating);
@@ -680,24 +714,20 @@ function renderRecorder() {
       const v = buildLive(false);
       liveViews.push(v);
       $recorder.replaceChildren(v.root);
-    } else if (mode === "transcribing") {
-      busy.bar = el("i");
-      busy.text = el("span");
-      $recorder.replaceChildren(el("div", { class: "rec-busy" }, busy.text,
-        el("div", { class: "bar" }, busy.bar)));
-      closeFloating();
     } else {
       closeFloating();
       const lang = el("select", { class: "lang", title: "Lingua della call",
                                   "aria-label": "Lingua della call",
                                   onchange: e => { recLang = e.target.value; } },
         ...LANGS.map(([v, label]) => el("option", { value: v, selected: v === recLang }, label)));
-      const start = el("button", { class: "rec-start",
+      const start = el("button", { class: "rec-start", disabled: busy,
+                                   title: busy ? "Trascrizione in corso" : null,
                                    onclick: () => recAction("start", { lang: recLang || null }) },
         el("span", { class: "rec-dot" }), "Registra");
       const pick = iconButton("upload", "Trascrivi un file audio o video", () => $file.click(),
                               "rec-import");
-      const note = st.state === "done" && st.name
+      pick.disabled = busy;
+      const note = busy ? null : st.state === "done" && st.name
         ? el("p", { class: "rec-note" }, "Trascritta: ",
              el("a", { href: `#/rec/${enc(st.name)}` }, "apri"))
         : st.state === "error" ? el("p", { class: "rec-note err" }, st.message) : null;
@@ -705,13 +735,39 @@ function renderRecorder() {
     }
   }
   if (mode === "recording") for (const v of liveViews) v.update(st);
-  if (mode === "transcribing") {
-    const [done, total] = st.step || [0, 0];
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    busy.text.textContent = st.message === "conversione" ? "Conversione del file…"
-                                                         : `Trascrizione… ${pct}%`;
-    busy.bar.style.width = `${pct}%`;
+}
+
+const pendingView = {};
+
+function renderPending() {
+  // The call being uploaded or transcribed, at the top of the list, until it is ready.
+  let title, text, pct;
+  if (uploading) {
+    title = uploading.name;
+    pct = uploading.pct;
+    text = `Caricamento… ${pct}%`;
+  } else if (recState.state === "transcribing") {
+    title = recState.source ? recState.source.replace(/\.[^.]+$/, "") : "Registrazione";
+    const [done, total] = recState.step || [0, 0];
+    pct = total ? Math.min(99, Math.round((done / total) * 100)) : 0;
+    text = recState.message === "conversione" ? "Conversione…" : `Trascrizione… ${pct}%`;
+  } else {
+    $pending.hidden = true;
+    return;
   }
+  if (!pendingView.title) {
+    pendingView.title = el("span", { class: "title" });
+    pendingView.text = el("span", { class: "sub" });
+    pendingView.bar = el("i");
+    $pending.replaceChildren(el("div", { class: "group" }, "In corso"),
+      el("div", { class: "pending-call" }, el("span", { class: "pending-dot blink" }),
+        el("div", { class: "pending-body" }, pendingView.title, pendingView.text,
+          el("div", { class: "bar" }, pendingView.bar))));
+  }
+  $pending.hidden = false;
+  pendingView.title.textContent = title;
+  pendingView.text.textContent = text;
+  pendingView.bar.style.width = `${pct}%`;
 }
 
 function setRecState(st) {
@@ -731,7 +787,7 @@ function setRecState(st) {
 const $file = el("input", { type: "file", accept: "audio/*,video/*", hidden: true,
                             onchange: e => { if (e.target.files[0]) importFile(e.target.files[0]); } });
 document.body.append($file);
-let uploading = false;
+let uploading = null;   // {name, pct} while a file is being sent
 let imported = null;    // name of the call being imported from this window
 
 function importFile(file) {
@@ -740,19 +796,19 @@ function importFile(file) {
     toast("Aspetta che finisca la registrazione o la trascrizione in corso.");
     return;
   }
-  uploading = true;
-  const bar = el("i"), text = el("span", {}, `Caricamento di ${file.name}…`);
-  $recorder.replaceChildren(el("div", { class: "rec-busy" }, text,
-    el("div", { class: "bar" }, bar)));
+  uploading = { name: file.name.replace(/\.[^.]+$/, ""), pct: 0 };
+  renderRecorder();
   const params = new URLSearchParams({ filename: file.name, modified: String(file.lastModified) });
   if (recLang) params.set("lang", recLang);
   const xhr = new XMLHttpRequest();
   xhr.open("POST", `/api/import?${params}`);
   xhr.upload.onprogress = e => {
-    if (e.lengthComputable) bar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`;
+    if (!e.lengthComputable || !uploading) return;
+    uploading.pct = Math.round((e.loaded / e.total) * 100);
+    renderPending();
   };
   xhr.onload = () => {
-    uploading = false;
+    uploading = null;
     $file.value = "";
     let data = {};
     try { data = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
@@ -767,7 +823,7 @@ function importFile(file) {
     poll();
   };
   xhr.onerror = () => {
-    uploading = false;
+    uploading = null;
     recMode = null;
     renderRecorder();
     toast("File non importato: il server non risponde.");

@@ -14,7 +14,10 @@
     </div>
     <div id="recorder" class="recorder"></div>
     <div class="search"><input id="search" type="search" placeholder="Cerca" autocomplete="off"></div>
-    <nav id="calls" class="calls" aria-label="Registrazioni"></nav>
+    <nav id="calls" class="calls" aria-label="Registrazioni">
+      <div id="pending" class="pending" role="status" hidden></div>
+      <div id="list"></div>
+    </nav>
   </aside>
   <main id="main" class="main"></main>
   <div id="audio" hidden></div>

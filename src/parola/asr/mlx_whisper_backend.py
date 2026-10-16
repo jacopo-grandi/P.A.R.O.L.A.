@@ -90,6 +90,43 @@ def sound_share(start: float, end: float, regions: list[tuple[float, float]]) ->
 
 
 @contextmanager
+def whisper_progress(callback) -> Iterator[None]:
+    """Report how much of the audio Whisper has decoded: mlx_whisper only shows it as a tqdm
+    bar, so the bar is replaced by one that calls ``callback`` with the share done."""
+    if callback is None:
+        yield
+        return
+    import sys
+    from types import SimpleNamespace
+
+    import mlx_whisper.transcribe  # noqa: F401  (the module, not the function)
+
+    module = sys.modules["mlx_whisper.transcribe"]
+
+    class Bar:
+        def __init__(self, total: int = 0, **_: Any) -> None:
+            self.total, self.n = total or 0, 0
+
+        def __enter__(self) -> "Bar":
+            return self
+
+        def __exit__(self, *_: Any) -> bool:
+            return False
+
+        def update(self, k: int) -> None:
+            self.n += k
+            if self.total:
+                callback(min(1.0, self.n / self.total))
+
+    original = module.tqdm
+    module.tqdm = SimpleNamespace(tqdm=Bar)
+    try:
+        yield
+    finally:
+        module.tqdm = original
+
+
+@contextmanager
 def carried_prompt(text: str | None) -> Iterator[None]:
     """Put ``text`` at the start of Whisper's prompt on every window, not only the first one.
 
@@ -146,6 +183,7 @@ class MLXWhisperBackend:
         self.vad = vad
         # Terms carried in the prompt of every window (parola.glossary).
         self.glossary = glossary
+        self.on_progress = None
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
         with carried_prompt(self.glossary):
@@ -162,13 +200,14 @@ class MLXWhisperBackend:
         if not self.vad:
             # Library defaults are kept on purpose: decoding parameters only change after
             # they are measured on the test set (Phase 2).
-            result = mlx_whisper.transcribe(
-                str(wav_path),
-                path_or_hf_repo=self.model,
-                language=language,
-                word_timestamps=True,
-                initial_prompt=self.initial_prompt,
-            )
+            with whisper_progress(self.on_progress):
+                result = mlx_whisper.transcribe(
+                    str(wav_path),
+                    path_or_hf_repo=self.model,
+                    language=language,
+                    word_timestamps=True,
+                    initial_prompt=self.initial_prompt,
+                )
             return convert_result(result)
 
         from parola.audio.vad import speech_audio, speech_regions
@@ -188,13 +227,14 @@ class MLXWhisperBackend:
         # Decoding is the same as without VAD: shifting where it starts (or decoding each sound
         # stretch on its own, or Whisper's hallucination_silence_threshold) moved Whisper's
         # windows and made it skip real speech on the test set (results/2026-10-15-vad.md).
-        merged = mlx_whisper.transcribe(
-            str(wav_path),
-            path_or_hf_repo=self.model,
-            language=language,
-            word_timestamps=True,
-            initial_prompt=self.initial_prompt,
-        )
+        with whisper_progress(self.on_progress):
+            merged = mlx_whisper.transcribe(
+                str(wav_path),
+                path_or_hf_repo=self.model,
+                language=language,
+                word_timestamps=True,
+                initial_prompt=self.initial_prompt,
+            )
         converted = convert_result(merged)
         converted.segments = [s for s in converted.segments if has_sound(s, regions)]
         return converted

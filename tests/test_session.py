@@ -224,3 +224,46 @@ def test_the_suggested_title_is_kept_apart(tmp_path, helper, capsys):
     assert meta.title_suggested == meta.title == "Mulching naturale e semi antichi"
     assert main(["titles", "--dir", str(tmp_path)]) == 0
     assert "1 of 1 suggested titles kept" in capsys.readouterr().out
+
+
+class Reporting(Fake):
+    """A fake backend that reports its progress in four steps, like Whisper's 30 s windows."""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.on_progress = None
+
+    def transcribe(self, wav_path, language=None):
+        for share in (0.25, 0.5, 0.75, 1.0):
+            if self.on_progress:
+                self.on_progress(share)
+        return super().transcribe(wav_path, language)
+
+
+@requires_ffmpeg
+def test_progress_moves_during_each_step(tmp_path):
+    from parola.capture.recorder import Recording, transcribe_recording
+
+    tone(tmp_path / "c.mixed.wav")
+    rec = Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+    seen = []
+    first, second = Reporting("ciao a tutti"), Reporting("ciao a voi")
+
+    def progress(msg, done, total):
+        seen.append((msg, done / total))
+
+    transcribe_recording(rec, first, "it", second=second, progress=progress)
+    shares = [round(s, 2) for _, s in seen]
+    assert shares == sorted(shares) and shares[0] == 0 and shares[-1] == 1.0
+    # Whisper's step weighs four times Parakeet's: halfway through it is 40% of the work.
+    assert ("trascrizione", 0.4) in [(m, round(s, 2)) for m, s in seen]
+    assert first.on_progress is None and second.on_progress is None  # handed back
+
+
+@requires_ffmpeg
+def test_status_names_the_imported_file(tmp_path, helper):
+    session = RecordingSession(tmp_path, binary=helper,
+                               backends=lambda: (Fake("ciao"), Fake("ciao")))  # fmt: skip
+    st = session.import_file(tone(tmp_path / "u.m4a"), "Vacanze, intervista.m4a")
+    assert st["source"] == "Vacanze, intervista.m4a"
+    wait_for(session, "done")

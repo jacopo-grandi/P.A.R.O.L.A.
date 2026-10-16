@@ -76,10 +76,15 @@ class ParakeetBackend:
 
     def __init__(self, model: str = PARAKEET_MODEL) -> None:
         self.model = model
+        self.on_progress = None
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
         # Greedy TDT decoding is deterministic; the language cannot be forced.
+        report = self.on_progress
         result = _load(self.model).transcribe(
-            str(wav_path), chunk_duration=CHUNK_SECONDS, overlap_duration=OVERLAP_SECONDS
+            str(wav_path),
+            chunk_duration=CHUNK_SECONDS,
+            overlap_duration=OVERLAP_SECONDS,
+            chunk_callback=(lambda end, total: report(min(1.0, end / total))) if report else None,
         )
         return convert_result(result)

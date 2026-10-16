@@ -244,25 +244,35 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         with_speech.append(c)
     if not with_speech:
         raise CaptureError("every channel is silent: nothing to transcribe")
-    total_steps = len(with_speech) * (2 if second is not None else 1)
-    done = 0
+    # Progress in units of work: Whisper takes about four times as long as Parakeet on the same
+    # audio (RTF 0.047 vs 0.013, results/2026-10-15-adjudicated.md), so its steps weigh more.
+    weights = {"primary": 4.0, "second": 1.0}
+    total_steps = len(with_speech) * (weights["primary"] + (weights["second"] if second else 0))
+    done = 0.0
 
-    def step(message: str) -> None:
-        if progress is not None:
-            progress(message, done, total_steps)
+    def run(engine: ASRBackend, kind: str, path: Path, out_dir: Path, message: str) -> Transcript:
+        def report(share: float) -> None:
+            if progress is not None:
+                progress(message, done + weights[kind] * share, total_steps)
+
+        report(0.0)
+        if hasattr(engine, "on_progress"):
+            engine.on_progress = report
+        try:
+            return transcribe_file(path, engine, out_dir=out_dir, language=language).transcript
+        finally:
+            if hasattr(engine, "on_progress"):
+                engine.on_progress = None
 
     for channel in with_speech:
         work = rec.out_dir / f".{rec.name}.{channel}"
         side = f" {LABELS[channel]}" if LABELS[channel] else ""
-        step(f"trascrizione{side}")
-        out = transcribe_file(rec.path(channel), backend, out_dir=work, language=language)
-        done += 1
-        parts[channel] = out.transcript
+        parts[channel] = run(backend, "primary", rec.path(channel), work, f"trascrizione{side}")
+        done += weights["primary"]
         if second is not None:
-            step(f"parole dubbie{side}")
-            other = transcribe_file(rec.path(channel), second, out_dir=work / "second",
-                                    language=language).transcript  # fmt: skip
-            done += 1
+            other = run(second, "second", rec.path(channel), work / "second",
+                        f"parole dubbie{side}")  # fmt: skip
+            done += weights["second"]
             n = mark_doubts(parts[channel], other)
             total = sum(len(seg.words) for seg in parts[channel].segments)
             print(f"{channel}: {n} doubtful words out of {total}", file=sys.stderr)

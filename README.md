@@ -66,10 +66,12 @@ the audio permissions to (e.g. Terminal).
 To transcribe an audio or video file recorded elsewhere, use the upload button next to
 **Registra** or drop the file on the window. It goes through the same transcription and doubtful
 words, on a single track: every voice is on it, so there is no "Io / Altri" split.
+While a file or a recording is being transcribed it shows at the top of the list, with its
+progress.
 
 The sidebar lists the calls by date, with search; the ••• menu renames, suggests a title from the
 content, or deletes (with undo). In a call, doubtful words are highlighted and a click on a word
-plays the audio from there. N opens the next doubtful word (it plays and becomes editable):
+plays the audio from there; the button next to the timeline changes the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
 Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click
 edits any word, Cmd-Z undoes. Every change is logged with the model's original text, which is also
 kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the browser's print.

@@ -56,6 +56,7 @@ class RecordingSession:
         self.levels: dict[str, float] = {}
         self.message = ""
         self.step = (0, 0)
+        self.source: str | None = None  # file name of an import, None for a recording
 
     # ---------------------------------------------------------------- recording
 
@@ -77,6 +78,7 @@ class RecordingSession:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                           text=True)  # fmt: skip
             self.state, self.name, self.language = "recording", name, language
+            self.source = None
             self.started, self.levels, self.message, self.step = time.time(), {}, "", (0, 0)
             self.paused_at, self.paused_total, self._ready = None, 0.0, False
             threading.Thread(target=self._read_levels, args=(self._proc,), daemon=True).start()
@@ -164,6 +166,7 @@ class RecordingSession:
                 raise SessionError(f"already {self.state}")
             name = self.free_name(original)
             self.state, self.name, self.language = "transcribing", name, language
+            self.source = original
             self.started, self.levels, self.message, self.step = None, {}, "conversione", (0, 0)
             self.paused_at, self.paused_total = None, 0.0
         threading.Thread(target=self._import, args=(upload, original, name, started_at),
@@ -218,6 +221,7 @@ class RecordingSession:
             "state": self.state,
             "name": self.name,
             "paused": self.paused_at is not None,
+            "source": self.source,
             "elapsed": round(elapsed, 1),
             # The levels thread may still store a line read just before the pause.
             "levels": {} if self.paused_at is not None else self.levels,

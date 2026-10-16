@@ -81,6 +81,23 @@ svg { display: block; }
 .call-row:hover .call-more, .call-row.active .call-more, .call-more:focus-visible,
 .call-row:has(.menu) .call-more { opacity: 1; }
 .call-row .menu { top: 34px; right: 4px; }
+.pending { padding-bottom: 4px; }
+.pending[hidden] { display: none; }
+.pending-call { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px;
+                border-radius: 6px; background: var(--raise); font-size: var(--text-small); }
+.pending-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; flex: none;
+               background: var(--accent); }
+.pending-body { flex: 1; min-width: 0; }
+.pending-body .title { display: block; white-space: nowrap; overflow: hidden;
+                       text-overflow: ellipsis; color: var(--fg); }
+.pending-body .sub { display: block; font-size: var(--text-caption); color: var(--fg-3);
+                     font-variant-numeric: tabular-nums; }
+.pending-body .bar { height: 2px; margin-top: 5px; background: var(--line); border-radius: 1px;
+                     overflow: hidden; }
+.pending-body .bar i { display: block; height: 100%; width: 0; background: var(--fg-2);
+                       transition: width 0.3s; }
+.rec-start:disabled { opacity: 0.4; cursor: default; }
+.rec-start:disabled:hover { background: var(--raise); }
 .empty-list { padding: 8px 10px; font-size: var(--text-small); color: var(--fg-3); }
 
 /* ------------------------------------------------------------------ recorder */
@@ -207,6 +224,11 @@ kbd { font: var(--text-caption) var(--font-num); padding: 0 4px; border: 1px sol
                   background: var(--fg-2); border-radius: 1px; }
 .timeline .tick { position: absolute; top: 10px; width: 1px; height: 8px;
                   background: var(--doubt); opacity: 0.35; }
+.speed { flex: none; min-width: 44px; padding: 3px 8px; border-radius: 6px;
+         font: 600 var(--text-caption) var(--font-num); font-variant-numeric: tabular-nums;
+         color: var(--fg-3); }
+.speed:hover { background: var(--hover); color: var(--fg); }
+.speed.on { color: var(--fg); background: var(--raise); }
 .review { font-size: var(--text-caption); color: var(--fg-3); flex: none; display: flex; align-items: center;
           gap: 2px; }
 .review b { color: var(--fg-2); font-weight: 600; margin: 0 4px; }
