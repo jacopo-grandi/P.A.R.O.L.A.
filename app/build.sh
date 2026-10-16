@@ -13,12 +13,23 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$here/.build/release/PAROLA" "$app/Contents/MacOS/PAROLA"
 
+# The icon (app/icon/icon.png, drawn by app/icon/make_icon.swift) at every size macOS asks for.
+iconset=$(mktemp -d)/AppIcon.iconset
+mkdir -p "$iconset"
+for px in 16 32 128 256 512; do
+    sips -z $px $px "$here/icon/icon.png" --out "$iconset/icon_${px}x${px}.png" >/dev/null
+    sips -z $((px * 2)) $((px * 2)) "$here/icon/icon.png" --out "$iconset/icon_${px}x${px}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
+rm -rf "$(dirname "$iconset")"
+
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>PAROLA</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIdentifier</key><string>dev.parola.app</string>
   <key>CFBundleName</key><string>PAROLA</string>
   <key>CFBundleDisplayName</key><string>P.A.R.O.L.A.</string>
