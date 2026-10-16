@@ -86,7 +86,8 @@ final class Engine: ObservableObject {
 
     private func startPolling() {
         poll?.invalidate()
-        poll = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Twice a second: the floating recorder's levels and state follow the capture closely.
+        poll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
     }

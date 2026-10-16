@@ -5,6 +5,7 @@ import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var engine: Engine?
+    var recorder: FloatingRecorder?
 
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated { engine?.stop() }  // never leave the engine (or a capture) running
@@ -23,6 +24,9 @@ struct PAROLAApp: App {
                 .frame(minWidth: 820, minHeight: 520)
                 .onAppear {
                     delegate.engine = engine
+                    if delegate.recorder == nil {
+                        delegate.recorder = FloatingRecorder(engine: engine)
+                    }
                     engine.start()
                 }
         }
