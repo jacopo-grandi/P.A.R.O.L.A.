@@ -187,3 +187,16 @@ def test_a_compressed_call_is_listed_and_played(client, folder):
     r = client.get("/audio/call/mic")
     assert r.status_code == 200 and r.headers["content-type"] == "audio/flac"
     assert client.get("/audio/call/nope").status_code == 404
+
+
+def test_suggestions_come_only_from_your_own_corrections(client):
+    assert client.get("/api/suggestions", params={"text": "tutti"}).json() == []  # starts empty
+    client.post("/api/recordings/call/correct", json={"segment": 0, "start": 2, "end": 3,
+                                                      "text": "Orto-Lab"})  # fmt: skip
+    assert client.get("/api/suggestions", params={"text": "tutti"}).json() == []  # once: not yet
+    client.post("/api/recordings/call/correct", json={"segment": 0, "start": 0, "end": 1,
+                                                      "text": "Orto-Lab"})  # fmt: skip
+    (s,) = client.get("/api/suggestions", params={"text": "tutti"}).json()
+    assert (s["term"], s["count"], s["exact"]) == ("Orto-Lab", 2, True)
+    rec = client.get("/api/recordings/call").json()
+    assert rec["segments"][0]["text"] == "Orto-Lab a Orto-Lab"  # nothing changed by itself

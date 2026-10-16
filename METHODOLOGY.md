@@ -93,7 +93,10 @@ on fidelity tokens, and turbo's words that Parakeet does not confirm are marked 
 - On a real 30-minute call, recorded with consent, every error noticed in review had been flagged.
 
 In the app, you jump from one doubtful word to the next, hear just that excerpt, and confirm or
-correct it. Every edit is logged with the model's original words and can be undone; the
+correct it. Terms you corrected at least twice (names, acronyms, words rare in the
+language spoken) come back as suggestions when you open a similar doubtful word; they are
+learned from your own edit logs only, start empty on every install and never change the text
+by themselves ([0025](docs/decisions/0025-glossary-learned-from-corrections.md)). Every edit is logged with the model's original words and can be undone; the
 untouched model output is kept next to the transcript.
 
 ## Recording calls
@@ -184,3 +187,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0022](docs/decisions/0022-titles-read-like-titles.md) | Titles that read like titles |
 | [0023](docs/decisions/0023-title-rules-that-generalize.md) | Title rules that generalize |
 | [0024](docs/decisions/0024-lossless-audio-after-transcription.md) | Lossless audio after transcription |
+| [0025](docs/decisions/0025-glossary-learned-from-corrections.md) | Glossary learned from corrections: suggests, never corrects |

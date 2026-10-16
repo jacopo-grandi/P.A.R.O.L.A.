@@ -195,6 +195,23 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
             cache[path] = (mtime, Transcript.load(path))
         return cache[path][1]
 
+    learned: dict = {"sig": None, "terms": {}}
+
+    @app.get("/api/suggestions")
+    def suggestions(text: str) -> list[dict]:
+        """Terms learned from the person's own corrections that ``text`` may be (decision 0025).
+        Read from the calls' edit logs, recomputed when a call changes."""
+        from dataclasses import asdict
+
+        from parola.learned import learn, suggest
+
+        paths = [folder / f"{n}.json" for n in recordings(folder)]
+        sig = tuple((p.name, p.stat().st_mtime) for p in paths)
+        if sig != learned["sig"]:
+            learned["terms"] = learn([cached(p) for p in paths])
+            learned["sig"] = sig
+        return [asdict(s) for s in suggest(text, learned["terms"])]
+
     @app.get("/api/search")
     def search(q: str, limit: int = 3) -> list[dict]:
         """Calls whose words (or title) match ``q``, newest first, with their first hits."""

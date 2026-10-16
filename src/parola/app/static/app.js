@@ -467,11 +467,39 @@ function openEditor(seg, start, end, autoplay) {
                      { seg, start, auto: true });
       } catch (err) { toast(err.message); }
     } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); playRun(seg, start, end); }
+    else if (e.key === "Tab" && suggestions.length) {
+      e.preventDefault();  // Tab takes the first suggestion; Enter still decides
+      useSuggestion(input, suggestions[0]);
+    }
   });
   input.focus();
   input.select();
   first.el.scrollIntoView({ block: "center", behavior: "smooth" });
   if (autoplay) playRun(seg, start, end);
+  showSuggestions(input, text, editing);
+}
+
+// Terms learned from your own corrections (decision 0025): offered, never applied.
+let suggestions = [];
+
+async function showSuggestions(input, text, opened) {
+  suggestions = [];
+  let found = [];
+  try { found = await getJSON(`/api/suggestions?text=${enc(text)}`); } catch (e) { return; }
+  if (editing !== opened || !found.length) return;  // the editor moved on meanwhile
+  suggestions = found;
+  const box = el("span", { class: "suggest", role: "group", "aria-label": "Suggerimenti" },
+    ...found.map((s, i) => el("button", {
+      class: "chip", title: `Hai corretto così ${s.count} volte${i === 0 ? " · Tab per usarlo" : ""}`,
+      onmousedown: e => e.preventDefault(),  // keep the focus in the field
+      onclick: () => useSuggestion(input, s) }, s.term, el("span", { class: "n" }, `×${s.count}`))));
+  input.after(box);
+}
+
+function useSuggestion(input, s) {
+  input.value = s.text;
+  input.size = Math.max(6, s.text.length + 2);
+  input.focus();
 }
 
 function playRun(seg, start, end) {
@@ -480,7 +508,8 @@ function playRun(seg, start, end) {
 }
 
 function closeEditor() {
-  document.querySelectorAll("input.edit").forEach(i => i.remove());
+  document.querySelectorAll("input.edit, .suggest").forEach(i => i.remove());
+  suggestions = [];
   document.querySelectorAll(".editing").forEach(e => e.classList.remove("editing"));
   editing = null;
 }

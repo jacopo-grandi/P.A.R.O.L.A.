@@ -5,6 +5,7 @@ parola record                         record a call (mic + system audio) and tra
 parola serve                          local web UI for the recorded calls
 parola titles                         suggested titles next to the ones you chose
 parola compress [--dry-run]           lossless FLAC for calls still stored as wav
+parola glossary                       terms learned from your corrections
 parola validate <transcript.json>     check a reference against docs/conventions.md
 parola annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 parola annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -93,6 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
                     help="folder with the recordings (default: data/private/calls)")  # fmt: skip
     sv.add_argument("--port", type=int, default=8765)
+
+    gl = sub.add_parser("glossary", help="terms learned from your corrections")
+    gl.add_argument("--dir", type=Path, default=Path("data/private/calls"))
 
     co = sub.add_parser("compress", help="lossless FLAC for calls still stored as wav")
     co.add_argument("--dir", type=Path, default=Path("data/private/calls"))
@@ -235,6 +239,21 @@ def cmd_record(args) -> int:
     return main_record(args.out, args.name, make_engine(args.engine), language,
                        args.duration, not args.no_mic, not args.no_system,
                        second=second)  # fmt: skip
+
+
+def cmd_glossary(args) -> int:
+    """What the app has learned from the corrections in the calls (decision 0025)."""
+    from parola.learned import MIN_CORRECTIONS, load_terms
+
+    terms = sorted(load_terms(args.dir).values(), key=lambda t: (-t.count, t.text.lower()))
+    if not terms:
+        print("nothing learned yet: corrections of names, acronyms and rare words are kept")
+        return 0
+    for t in terms:
+        heard = ", ".join(f"{h} ({n})" for h, n in t.heard.most_common())
+        state = "suggested" if t.count >= MIN_CORRECTIONS else f"after {MIN_CORRECTIONS}"
+        print(f"{t.text:24} {t.count:>3}x  {state:10}  heard as: {heard}")
+    return 0
 
 
 def cmd_compress(args) -> int:
@@ -573,6 +592,7 @@ def main(argv: list[str] | None = None) -> int:
         ("serve", None): cmd_serve,
         ("titles", None): cmd_titles,
         ("compress", None): cmd_compress,
+        ("glossary", None): cmd_glossary,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,
