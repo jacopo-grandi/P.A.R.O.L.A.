@@ -50,6 +50,13 @@ final class Engine: ObservableObject {
         // The engine resolves relative paths (bin/, data/) from its own location, not from here.
         p.currentDirectoryURL = URL(fileURLWithPath: command).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
+        // Opened from Finder, the app gets only /usr/bin:/bin:/usr/sbin:/sbin, not the shell's
+        // PATH: add where Homebrew puts ffmpeg (until step 3 bundles it).
+        var env = ProcessInfo.processInfo.environment
+        let path = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
+        let extra = ["/opt/homebrew/bin", "/usr/local/bin"].filter { !path.contains($0) }
+        env["PATH"] = (extra + path).joined(separator: ":")
+        p.environment = env
         p.terminationHandler = { [weak self] proc in
             Task { @MainActor in
                 guard let self, self.process === proc else { return }
