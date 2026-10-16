@@ -176,8 +176,8 @@ function renderCalls() {
     const title = el("span", { class: "title" }, c.title);
     const sub = el("span", { class: "sub" }, `${shortWhen(date)} · ${minutes(c.duration)}`,
       c.to_review ? el("span", { class: "n" }, ` · ${c.to_review} da rivedere`) : null);
-    const a = el("a", { class: "call", href: `#/rec/${enc(c.name)}`,
-                        title: "Doppio clic per rinominare" }, title, sub);
+    // The full title on hover: the row truncates it.
+    const a = el("a", { class: "call", href: `#/rec/${enc(c.name)}`, title: c.title }, title, sub);
     a.addEventListener("dblclick", e => { e.preventDefault(); renameInPlace(title, c); });
     const row = el("div", { class: "call-row" + (c.name === recName ? " active" : "") }, a);
     row.append(iconButton("more", `Altre azioni per ${c.title}`, e => {
@@ -408,7 +408,7 @@ async function undo() {
 
 function renderHeading() {
   const s = rec.summary;
-  const h1 = el("h1", { title: "Doppio clic per rinominare" }, s.title);
+  const h1 = el("h1", { title: `${s.title} (doppio clic per rinominare)` }, s.title);
   h1.addEventListener("dblclick", () => renameInPlace(h1, s));
   const when = new Date(s.started_at).toLocaleString("it-IT",
     { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit",
@@ -483,7 +483,8 @@ async function render(data, after) {
       }
     });
     const first = words[words.length - list.length];
-    body.append(el("div", { class: "turn", "data-channel": channel,
+    // lang per line: an English line is hyphenated and read aloud as English.
+    body.append(el("div", { class: "turn", lang: seg.lang || null, "data-channel": channel,
                             "data-doubt": seg.words.some(w => w.doubtful) },
       el("div", { class: `who ${channel}` }, LABELS[channel] || channel),
       el("span", { class: "t", onclick: () => play(first) }, clock(seg.start)),
@@ -769,6 +770,35 @@ document.addEventListener("keydown", e => {
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
 });
 
+// ---------------------------------------------------------------- type variants (dev only)
+
+const TYPES = [["v1", "v1"], ["sf", "SF"], ["charter", "Charter"], ["iowan", "Iowan"],
+               ["avenir", "Avenir"]];
+
+function typeVariants() {
+  // ?type=charter picks a variant; ?compare adds a switch to flip between them.
+  const params = new URLSearchParams(location.search);
+  const apply = t => {
+    if (t && t !== "sf") document.documentElement.dataset.type = t;
+    else delete document.documentElement.dataset.type;
+  };
+  apply(params.get("type"));
+  if (!params.has("compare")) return;
+  const bar = el("div", { class: "variants", role: "group", "aria-label": "Variante tipografica" });
+  for (const [v, label] of TYPES) {
+    bar.append(el("button", { "data-v": v, onclick: () => {
+      params.set("type", v);
+      history.replaceState(null, "", `?${params}${location.hash}`);
+      apply(v);
+      for (const b of bar.children) b.setAttribute("aria-pressed", String(b.dataset.v === v));
+    } }, label));
+  }
+  const current = params.get("type") || "sf";
+  for (const b of bar.children) b.setAttribute("aria-pressed", String(b.dataset.v === current));
+  document.body.append(bar);
+}
+
+typeVariants();
 window.addEventListener("hashchange", route);
 refreshCalls().catch(() => {}).then(route);
 poll();
