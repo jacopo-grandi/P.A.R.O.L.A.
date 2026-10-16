@@ -1,5 +1,5 @@
 <h1 align="center"><img src="docs/assets/parola.png" alt="P.A.R.O.L.A." width="720"></h1>
-<p align="center"><b>P</b>rocessing <b>A</b>udio, <b>R</b>iconoscimento e <b>O</b>utput <b>L</b>ocale <b>A</b>utomatico</p>
+<p align="center"><b>P</b>arlato <b>A</b>scoltato, <b>R</b>iconosciuto e <b>O</b>rganizzato in <b>L</b>ocale, <b>A</b>lla lettera</p>
 
 Verbatim transcription of audio and calls, **100% local** on Apple Silicon Macs, for Italian and
 English (including both mixed in the same sentence).
