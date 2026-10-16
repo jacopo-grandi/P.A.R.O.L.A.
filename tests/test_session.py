@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from ilat.app.server import create_app
-from ilat.asr import ASRResult
-from ilat.capture.session import RecordingSession, SessionError
-from ilat.schema import Segment, Transcript, Word
+from parola.app.server import create_app
+from parola.asr import ASRResult
+from parola.capture.session import RecordingSession, SessionError
+from parola.schema import Segment, Transcript, Word
 from tests.conftest import requires_ffmpeg
 
 FAKE_HELPER = '''#!{python}
-"""Mimics ilat-capture: levels on stderr until SIGINT, then two tone files and the summary."""
+"""Mimics parola-capture: levels on stderr until SIGINT, then two tone files and the summary."""
 import json, signal, subprocess, sys, time
 args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
 out, name = args["--out-dir"], args["--name"]
@@ -29,7 +29,7 @@ def pause(sig, _):
 signal.signal(signal.SIGINT, handler)
 signal.signal(signal.SIGUSR1, pause)
 signal.signal(signal.SIGUSR2, pause)
-print("ilat-capture: recording", file=sys.stderr, flush=True)
+print("parola-capture: recording", file=sys.stderr, flush=True)
 while not stop:
     if not paused:
         print('LEVELS {{"mic": -20.0, "system": -12.5}}', file=sys.stderr, flush=True)

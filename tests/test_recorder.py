@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from ilat.asr import ASRResult
-from ilat.capture import recorder
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola.asr import ASRResult
+from parola.capture import recorder
+from parola.schema import Metadata, Segment, Transcript, Word
 from tests.conftest import requires_ffmpeg
 
 
 def part(*segments):
     return Transcript(
         metadata=Metadata(audio_file="x.wav", duration=10, backend="fake", model="m",
-                          created_at=datetime(2026, 10, 15, tzinfo=UTC), ilat_version="0"),
+                          created_at=datetime(2026, 10, 15, tzinfo=UTC), parola_version="0"),
         segments=list(segments),
     )  # fmt: skip
 
@@ -87,7 +87,7 @@ def test_transcribe_recording_all_silent(tmp_path):
 
 
 def test_helper_is_not_rebuilt_when_up_to_date(monkeypatch, tmp_path):
-    binary = tmp_path / "ilat-capture"
+    binary = tmp_path / "parola-capture"
     binary.write_text("")
     monkeypatch.setattr(recorder, "BINARY", binary)
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("rebuilt"))
@@ -111,7 +111,7 @@ def test_marked_text_groups_doubtful_runs_and_keeps_punctuation():
 
 
 def test_marked_text_roundtrips_as_uncertain_in_annotation():
-    from ilat.annotate import from_annotation
+    from parola.annotate import from_annotation
 
     words = [Word(text="ci"), Word(text="vediamo", doubtful=True), Word(text="lunedì.")]
     line = recorder.marked_text(Segment(start=0, end=3, text="", words=words))

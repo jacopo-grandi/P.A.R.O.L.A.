@@ -1,4 +1,5 @@
 <h1 align="center"><img src="docs/assets/parola.png" alt="P.A.R.O.L.A." width="720"></h1>
+<p align="center"><b>P</b>rocessing <b>A</b>udio, <b>R</b>iconoscimento e <b>O</b>utput <b>L</b>ocale <b>A</b>utomatico</p>
 
 Verbatim transcription of audio and calls, **100% local** on Apple Silicon Macs, for Italian and
 English (including both mixed in the same sentence).
@@ -6,7 +7,7 @@ English (including both mixed in the same sentence).
 "Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
 layer will be derived from the verbatim one, never the other way around.
 
-The command-line tool and the Python package are still called `ilat`.
+The command is `parola`. The old name `ilat` still works for now and prints a notice.
 
 Status: early development (Phase 1, see [`docs/PLAN.md`](docs/PLAN.md)).
 
@@ -28,9 +29,9 @@ Hugging Face into the local cache. After that, nothing goes over the network.
 ## Usage
 
 ```bash
-uv run ilat transcribe path/to/call.m4a            # language auto-detected
-uv run ilat transcribe path/to/call.mp4 --lang it  # force Italian
-uv run ilat transcribe call.m4a --out transcripts/
+uv run parola transcribe path/to/call.m4a            # language auto-detected
+uv run parola transcribe path/to/call.mp4 --lang it  # force Italian
+uv run parola transcribe call.m4a --out transcripts/
 ```
 
 Writes `<name>.json` (segments and words with timestamps) and `<name>.txt` (readable, one line
@@ -39,7 +40,7 @@ per segment) next to the input, or into `--out`.
 ### Recording a call
 
 ```bash
-uv run ilat record                       # Ctrl-C to stop; files in data/private/calls/
+uv run parola record                       # Ctrl-C to stop; files in data/private/calls/
 ```
 
 Records your microphone ("Io") and the system audio ("Altri") with Core Audio taps (macOS 14.2+,
@@ -51,13 +52,13 @@ goes over the network.
 ### Reading the transcripts
 
 ```bash
-uv run ilat serve                        # http://127.0.0.1:8765, local only
+uv run parola serve                        # http://127.0.0.1:8765, local only
 ```
 
 The **● Registra** button in the header records a call without the terminal: timer, live levels
 for both sides (an empty "Altri" meter means system audio is not reaching the app: check the
 permission), then **■ Ferma** transcribes in the background and links to the call when ready.
-Run `ilat serve` from the same app you granted the audio permissions to (e.g. Terminal).
+Run `parola serve` from the same app you granted the audio permissions to (e.g. Terminal).
 
 Lists the recorded calls; in a call, doubtful words are highlighted and a click on a word plays
 the audio of that side from there. N opens the next doubtful word (it plays and becomes editable):
@@ -68,18 +69,18 @@ kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the bro
 ### Writing reference transcripts
 
 ```bash
-uv run ilat annotate draft call.json         # model output -> editable call.ann.txt
-uv run ilat annotate import call.ann.txt     # reviewed annotation -> validated call.ref.json
-uv run ilat validate call.ref.json           # check a reference against the conventions
-uv run ilat manifest check data/manifests/test.jsonl --files
+uv run parola annotate draft call.json         # model output -> editable call.ann.txt
+uv run parola annotate import call.ann.txt     # reviewed annotation -> validated call.ref.json
+uv run parola validate call.ref.json           # check a reference against the conventions
+uv run parola manifest check data/manifests/test.jsonl --files
 ```
 
 ### Evaluating ASR systems
 
 ```bash
-uv run ilat eval                                  # all systems, references in the manifest
+uv run parola eval                                  # all systems, references in the manifest
 uv sync --group baselines                         # optional: Parakeet v3 and CrisperWhisper 2.0
-uv run --group baselines ilat eval --systems parakeet-v3,crisper-turbo-lang
+uv run --group baselines parola eval --systems parakeet-v3,crisper-turbo-lang
 ```
 
 Reports go to `results/` (markdown + csv); hypotheses are cached in `data/private/hyp/`.
@@ -88,8 +89,8 @@ CrisperWhisper weights are under a non-commercial research license: evaluation o
 To check whether a system's extra words were really spoken (references may have missed them):
 
 ```bash
-uv run ilat audit build --system crisper-turbo-lang   # clips + local page in data/private/audit/
-uv run ilat audit summary audit-answers.json          # after exporting the answers from the page
+uv run parola audit build --system crisper-turbo-lang   # clips + local page in data/private/audit/
+uv run parola audit summary audit-answers.json          # after exporting the answers from the page
 ```
 
 Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:

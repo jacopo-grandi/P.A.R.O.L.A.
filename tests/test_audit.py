@@ -3,16 +3,16 @@ import wave
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ilat.audio import extract_audio
-from ilat.eval import audit
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola.audio import extract_audio
+from parola.eval import audit
+from parola.schema import Metadata, Segment, Transcript, Word
 from tests.conftest import requires_ffmpeg
 
 
 def transcript(*segments, kind="asr"):
     return Transcript(
         metadata=Metadata(kind=kind, audio_file="x.m4a", duration=60,
-                          created_at=datetime(2026, 10, 15, tzinfo=UTC), ilat_version="0"),
+                          created_at=datetime(2026, 10, 15, tzinfo=UTC), parola_version="0"),
         segments=list(segments),
     )  # fmt: skip
 

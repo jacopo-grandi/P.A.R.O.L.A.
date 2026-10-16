@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from ilat.asr import ASRResult, MLXWhisperBackend
-from ilat.cli import main
-from ilat.pipeline import transcribe_file
-from ilat.schema import Segment, Transcript, Word
+from parola.asr import ASRResult, MLXWhisperBackend
+from parola.cli import main
+from parola.pipeline import transcribe_file
+from parola.schema import Segment, Transcript, Word
 from tests.conftest import requires_ffmpeg
 
 

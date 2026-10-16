@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from ilat import models
+from parola import models
 
 
 @pytest.fixture(autouse=True)

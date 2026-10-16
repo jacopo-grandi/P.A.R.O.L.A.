@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat import editing
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola import editing
+from parola.schema import Metadata, Segment, Transcript, Word
 
 
 def make():
@@ -16,7 +16,7 @@ def make():
     ]
     meta = Metadata(
         audio_file="x.wav", duration=2, created_at=datetime(2026, 10, 16, tzinfo=UTC),
-        ilat_version="0",
+        parola_version="0",
     )  # fmt: skip
     return Transcript(
         metadata=meta,

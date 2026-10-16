@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from ilat.app.server import create_app
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola.app.server import create_app
+from parola.schema import Metadata, Segment, Transcript, Word
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def folder(tmp_path):
     t = Transcript(
         metadata=Metadata(audio_file="call.*.wav", duration=12.0, backend="mlx-whisper",
                           model="turbo", created_at=datetime(2026, 10, 16, tzinfo=UTC),
-                          ilat_version="0"),
+                          parola_version="0"),
         segments=[
             Segment(start=0, end=2, text="ciao a tutti", lang="it", channel="mic", words=[
                 Word(text="ciao", start=0.1, end=0.4), Word(text="a", start=0.5, end=0.6),

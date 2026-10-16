@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat.eval.metrics import (
+from parola.eval.metrics import (
     Counts,
     SegmentScore,
     align,
@@ -14,8 +14,8 @@ from ilat.eval.metrics import (
     score_transcript,
     wer_of,
 )
-from ilat.eval.normalize import number_to_words, split_word, tokenize
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola.eval.normalize import number_to_words, split_word, tokenize
+from parola.schema import Metadata, Segment, Transcript, Word
 
 
 def W(text, *tags, lang="it", start=None, end=None):
@@ -38,7 +38,7 @@ def transcript(*segments, kind="asr"):
             audio_file="x.m4a",
             duration=100,
             created_at=datetime(2026, 10, 15, tzinfo=UTC),
-            ilat_version="0",
+            parola_version="0",
         ),
         segments=list(segments),
     )
@@ -262,9 +262,9 @@ def test_bootstrap_ci_empty():
 
 
 def test_score_system_and_report(tmp_path):
-    from ilat.eval.report import score_system, write_report
-    from ilat.eval.systems import SYSTEMS
-    from ilat.manifest import ManifestRecord
+    from parola.eval.report import score_system, write_report
+    from parola.eval.systems import SYSTEMS
+    from parola.manifest import ManifestRecord
 
     ref = transcript(seg(0, 4, W("Ehm,", "filler"), W("ciao"), W("a"), W("tutti.")),
                      kind="reference")  # fmt: skip

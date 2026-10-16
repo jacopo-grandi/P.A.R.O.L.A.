@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from ilat.audio import FFmpegError, extract_audio, wav_duration
-from ilat.audio.extract import ffmpeg_command
+from parola.audio import FFmpegError, extract_audio, wav_duration
+from parola.audio.extract import ffmpeg_command
 from tests.conftest import requires_ffmpeg
 
 

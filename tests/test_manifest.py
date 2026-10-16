@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from ilat.annotate import from_annotation
-from ilat.manifest import check_manifest
+from parola.annotate import from_annotation
+from parola.manifest import check_manifest
 
 REF = (
     "# status: reviewed\n# audio_file: a.m4a\n# duration: 120.000\n\n"
@@ -128,7 +128,7 @@ def test_gold_and_silver_count_for_disfluency_metrics(tmp_path):
 
 
 def test_adjudicated_quality_and_derived_from(tmp_path):
-    from ilat.manifest import check_free_training_sources
+    from parola.manifest import check_free_training_sources
 
     rec = record(reference_quality="adjudicated", derived_from=["crisperwhisper"])
     report = check_manifest(write(tmp_path, rec, record(id="it-002")), tmp_path)

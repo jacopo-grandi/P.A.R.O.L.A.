@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ilat.schema import (
+from parola.schema import (
     CleanSentence,
     CleanTranscript,
     Metadata,
@@ -25,7 +25,7 @@ def make_metadata(**kw) -> Metadata:
         model="fake-model",
         language_detected="it",
         created_at=datetime(2026, 10, 15, 9, 0, tzinfo=UTC),
-        ilat_version="0.1.0",
+        parola_version="0.1.0",
     )
     return Metadata(**{**base, **kw})
 
@@ -53,6 +53,14 @@ def make_transcript() -> Transcript:
 def test_json_roundtrip():
     t = make_transcript()
     assert Transcript.from_json(t.to_json()) == t
+
+
+def test_files_from_before_the_rename_still_load():
+    data = make_transcript().model_dump(mode="json")
+    data["metadata"]["ilat_version"] = data["metadata"].pop("parola_version")
+    t = Transcript.model_validate(data)
+    assert t.metadata.parola_version == "0.1.0"
+    assert '"parola_version"' in t.to_json() and "ilat_version" not in t.to_json()
 
 
 def test_defaults():

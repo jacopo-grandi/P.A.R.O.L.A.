@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ilat.audio.vad import speech_regions
+from parola.audio.vad import speech_regions
 from tests.conftest import requires_ffmpeg
 
 
@@ -54,7 +54,7 @@ def test_digital_silence_has_no_regions(tmp_path):
 
 @requires_ffmpeg
 def test_speech_audio_concatenates_regions_up_to_limit(tmp_path):
-    from ilat.audio.vad import speech_audio
+    from parola.audio.vad import speech_audio
 
     wav = synth(tmp_path / "d.wav", [("silence", 2), ("tone", 1), ("silence", 3), ("tone", 2)])
     audio = speech_audio(wav, [(2.0, 3.0), (6.0, 8.0)], max_seconds=2.5)
@@ -63,7 +63,7 @@ def test_speech_audio_concatenates_regions_up_to_limit(tmp_path):
 
 
 def test_chunks_group_close_regions_and_split_long_ones():
-    from ilat.audio.vad import chunks
+    from parola.audio.vad import chunks
 
     regions = [(0.0, 5.0), (6.0, 10.0), (20.0, 25.0), (30.0, 95.0)]
     assert chunks(regions) == [(0.0, 10.0), (20.0, 25.0), (30.0, 58.0), (58.0, 86.0), (86.0, 95.0)]

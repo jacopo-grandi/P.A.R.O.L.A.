@@ -2,11 +2,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
-from ilat.schema import Metadata, Segment, Transcript, Word
-from ilat.schema.lint import lint
+from parola.annotate import AnnotationError, from_annotation, merge_segments, to_annotation
+from parola.schema import Metadata, Segment, Transcript, Word
+from parola.schema.lint import lint
 
-HEADER = "# ilat-annotation 1\n# status: reviewed\n# audio_file: call.m4a\n# duration: 60.000\n\n"
+HEADER = "# parola-annotation 1\n# status: reviewed\n# audio_file: call.m4a\n# duration: 60.000\n\n"
 
 
 def parse(body: str) -> Transcript:
@@ -140,7 +140,7 @@ def test_draft_from_asr_output():
     asr = Transcript(
         metadata=Metadata(
             audio_file="call.m4a", duration=12.0, backend="mlx-whisper", model="m",
-            created_at=datetime(2026, 10, 15, tzinfo=UTC), ilat_version="0",
+            created_at=datetime(2026, 10, 15, tzinfo=UTC), parola_version="0",
         ),
         segments=[
             Segment(start=0, end=2, text="Ehm, okay.", lang="it", words=[
@@ -165,7 +165,7 @@ def _asr(*segments: Segment) -> Transcript:
             audio_file="call.m4a",
             duration=100.0,
             created_at=datetime(2026, 10, 15, tzinfo=UTC),
-            ilat_version="0",
+            parola_version="0",
         ),
         segments=list(segments),
     )

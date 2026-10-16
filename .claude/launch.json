@@ -2,8 +2,8 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ilat-serve",
-      "runtimeExecutable": ".venv/bin/ilat",
+      "name": "parola-serve",
+      "runtimeExecutable": ".venv/bin/parola",
       "runtimeArgs": [
         "serve",
         "--port",

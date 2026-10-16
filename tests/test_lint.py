@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat.schema import Metadata, Segment, Transcript, Word
-from ilat.schema.lint import has_errors, lint
+from parola.schema import Metadata, Segment, Transcript, Word
+from parola.schema.lint import has_errors, lint
 
 
 def W(text, *tags, lang="it", **kw):
@@ -26,7 +26,7 @@ def ref(*segments):
             audio_file="x.m4a",
             duration=60,
             created_at=datetime(2026, 10, 15, tzinfo=UTC),
-            ilat_version="0",
+            parola_version="0",
         ),
         segments=list(segments),
     )

@@ -4,10 +4,10 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from ilat.asr.crisper_backend import normalize_word, words_to_segments
-from ilat.asr.parakeet_backend import convert_result, tokens_to_words
-from ilat.eval.normalize import tokenize
-from ilat.eval.systems import SYSTEMS
+from parola.asr.crisper_backend import normalize_word, words_to_segments
+from parola.asr.parakeet_backend import convert_result, tokens_to_words
+from parola.eval.normalize import tokenize
+from parola.eval.systems import SYSTEMS
 
 
 def tok(text, start, end, confidence=0.9):

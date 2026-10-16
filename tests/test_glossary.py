@@ -1,7 +1,7 @@
 from types import SimpleNamespace as NS
 
-from ilat import glossary
-from ilat.asr.mlx_whisper_backend import carried_prompt
+from parola import glossary
+from parola.asr.mlx_whisper_backend import carried_prompt
 
 
 def test_load_and_prompt(tmp_path):

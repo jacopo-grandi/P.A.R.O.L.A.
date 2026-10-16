@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The old identifier on purpose: macOS keys the audio permissions on it (decision 0019). -->
+  <key>CFBundleIdentifier</key><string>dev.ilat.capture</string>
+  <key>CFBundleName</key><string>parola-capture</string>
+  <key>NSMicrophoneUsageDescription</key><string>parola records your microphone to transcribe your side of the call locally.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>parola records the call audio to transcribe the other participants locally.</string>
+</dict>
+</plist>

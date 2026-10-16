@@ -451,55 +451,6 @@ wheels = [
 ]
 
 [[package]]
-name = "ilat"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "jiwer" },
-    { name = "mlx-whisper" },
-    { name = "num2words" },
-    { name = "numpy" },
-    { name = "parakeet-mlx" },
-    { name = "pydantic" },
-    { name = "python-docx" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-baselines = [
-    { name = "crisperwhisper", extra = ["transformers"] },
-]
-dev = [
-    { name = "httpx" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.143.2" },
-    { name = "jiwer", specifier = ">=4.0.0" },
-    { name = "mlx-whisper", specifier = ">=0.4" },
-    { name = "num2words", specifier = ">=0.5.14" },
-    { name = "numpy", specifier = ">=2" },
-    { name = "parakeet-mlx", specifier = ">=0.5.3" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "python-docx", specifier = ">=1.2.0" },
-    { name = "uvicorn", specifier = ">=0.54.0" },
-]
-
-[package.metadata.requires-dev]
-baselines = [{ name = "crisperwhisper", extras = ["transformers"], specifier = ">=2.0.3" }]
-dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pre-commit", specifier = ">=3.7" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "ruff", specifier = ">=0.6" },
-]
-
-[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1008,6 +959,55 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/32/59/4fd8c37c064c117e4f6af5bdf041960548121608d0504545aa913b71e8ee/parakeet_mlx-0.5.3.tar.gz", hash = "sha256:b06b7345d68127b581ee0ba07691654e60d44004c401c9acfefcefbb4de50ea7", size = 38083, upload-time = "2026-10-01T16:03:30.852Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f6/72/90a8cc7d86e37e9799dd822b52179042a60200a54f96d4c6213b06337154/parakeet_mlx-0.5.3-py3-none-any.whl", hash = "sha256:64c1f0f48445f6a1b99e6ddc2670f9b4d7218e0237ba883a8cfa850b24dca7c8", size = 37540, upload-time = "2026-10-01T16:03:25.066Z" },
+]
+
+[[package]]
+name = "parola"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "jiwer" },
+    { name = "mlx-whisper" },
+    { name = "num2words" },
+    { name = "numpy" },
+    { name = "parakeet-mlx" },
+    { name = "pydantic" },
+    { name = "python-docx" },
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+baselines = [
+    { name = "crisperwhisper", extra = ["transformers"] },
+]
+dev = [
+    { name = "httpx" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.143.2" },
+    { name = "jiwer", specifier = ">=4.0.0" },
+    { name = "mlx-whisper", specifier = ">=0.4" },
+    { name = "num2words", specifier = ">=0.5.14" },
+    { name = "numpy", specifier = ">=2" },
+    { name = "parakeet-mlx", specifier = ">=0.5.3" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "python-docx", specifier = ">=1.2.0" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
+]
+
+[package.metadata.requires-dev]
+baselines = [{ name = "crisperwhisper", extras = ["transformers"], specifier = ">=2.0.3" }]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pre-commit", specifier = ">=3.7" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
 ]
 
 [[package]]

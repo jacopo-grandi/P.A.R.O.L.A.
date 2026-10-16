@@ -1,15 +1,15 @@
 import itertools
 from datetime import UTC, datetime
 
-from ilat import adjudicate
-from ilat.schema import Metadata, Segment, Transcript, Word
-from ilat.schema.lint import lint
+from parola import adjudicate
+from parola.schema import Metadata, Segment, Transcript, Word
+from parola.schema.lint import lint
 
 
 def transcript(*segments, kind):
     return Transcript(
         metadata=Metadata(kind=kind, audio_file="x.m4a", duration=60,
-                          created_at=datetime(2026, 10, 15, tzinfo=UTC), ilat_version="0"),
+                          created_at=datetime(2026, 10, 15, tzinfo=UTC), parola_version="0"),
         segments=list(segments),
     )  # fmt: skip
 
@@ -177,7 +177,7 @@ def test_rebuilt_page_keeps_storage_key_and_old_answers(tmp_path):
     adjudicate.apply_policy(regions)
     text = adjudicate.write_page(regions, "it-002", ("a", "b"), tmp_path).read_text()
     # The key uses all regions (3), not only the shown ones.
-    assert '"ilat-adjudicate-" + "it-002" + "-" + 3' in text
+    assert '"parola-adjudicate-" + "it-002" + "-" + 3' in text
     assert "Object.entries(state)" in text  # export includes answers to hidden items
     shown = text.count("<section ")
     assert shown == sum(1 for r in regions if r.auto is None or r.check)

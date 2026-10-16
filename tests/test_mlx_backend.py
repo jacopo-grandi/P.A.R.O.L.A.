@@ -1,4 +1,4 @@
-from ilat.asr.mlx_whisper_backend import convert_result
+from parola.asr.mlx_whisper_backend import convert_result
 
 # Shape of the dict returned by mlx_whisper.transcribe(..., word_timestamps=True).
 SAMPLE = {
@@ -81,7 +81,7 @@ def test_convert_result_keeps_segments_sorted():
 
 
 def test_sound_share():
-    from ilat.asr.mlx_whisper_backend import sound_share
+    from parola.asr.mlx_whisper_backend import sound_share
 
     regions = [(1.0, 2.0), (4.0, 6.0)]
     assert sound_share(0.0, 4.0, regions) == 0.25
@@ -91,8 +91,8 @@ def test_sound_share():
 
 
 def test_has_sound_keeps_long_segments_with_some_speech():
-    from ilat.asr.mlx_whisper_backend import has_sound
-    from ilat.schema import Segment, Word
+    from parola.asr.mlx_whisper_backend import has_sound
+    from parola.schema import Segment, Word
 
     regions = [(10.0, 15.0)]
     long_seg = Segment(

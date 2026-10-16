@@ -2,14 +2,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ilat import doubt
-from ilat.schema import Metadata, Segment, Transcript, Word
+from parola import doubt
+from parola.schema import Metadata, Segment, Transcript, Word
 
 
 def t(*segments, kind="asr"):
     return Transcript(
         metadata=Metadata(kind=kind, audio_file="x.wav", duration=60,
-                          created_at=datetime(2026, 10, 16, tzinfo=UTC), ilat_version="0"),
+                          created_at=datetime(2026, 10, 16, tzinfo=UTC), parola_version="0"),
         segments=[Segment(start=k * 10, end=k * 10 + 9, lang="it", text=s,
                           words=[Word(text=w, lang="it" if kind == "reference" else None)
                                  for w in s.split()]) for k, s in enumerate(segments)],

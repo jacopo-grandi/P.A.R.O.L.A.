@@ -5,10 +5,10 @@ Guida pratica per trascrivere a mano il test set secondo [conventions.md](conven
 ## Flusso
 
 ```bash
-uv run ilat transcribe data/private/call.m4a          # -> call.json, call.txt (bozza del modello)
-uv run ilat annotate draft data/private/call.json     # -> call.ann.txt (da correggere)
+uv run parola transcribe data/private/call.m4a          # -> call.json, call.txt (bozza del modello)
+uv run parola annotate draft data/private/call.json     # -> call.ann.txt (da correggere)
 # ...correggi call.ann.txt ascoltando l'audio...
-uv run ilat annotate import data/private/call.ann.txt # -> call.ref.json (riferimento validato)
+uv run parola annotate import data/private/call.ann.txt # -> call.ref.json (riferimento validato)
 ```
 
 1. Apri `call.ann.txt` in un editor e correggi **ascoltando l'audio**: testo, confini dei segmenti, lingua e codici.
@@ -16,7 +16,7 @@ uv run ilat annotate import data/private/call.ann.txt # -> call.ref.json (riferi
 3. `import` controlla il file con le regole delle convenzioni. Se ci sono errori, non scrive nulla e indica il segmento e la parola da sistemare. Gli avvisi (per esempio cifre nel testo) non bloccano.
 4. Nel manifest `data/manifests/test.jsonl`, nella riga del file, imposta `"reference": "data/private/testset/<id>.ref.json"` e `"reference_quality": "gold"` (o `"silver"` se le disfluenze non sono state verificate ascoltando tutto l'audio; vedi conventions.md §4) (o aggiungi una riga nuova per una registrazione nuova). Poi controlla tutto con:
    ```bash
-   uv run ilat manifest check data/manifests/test.jsonl --files
+   uv run parola manifest check data/manifests/test.jsonl --files
    ```
 
 Tutti i file restano in `data/private/`, che è ignorato da git.
@@ -24,7 +24,7 @@ Tutti i file restano in `data/private/`, che è ignorato da git.
 ## Formato
 
 ```
-# ilat-annotation 1
+# parola-annotation 1
 # status: reviewed
 # audio_file: call.m4a
 # duration: 362.240
@@ -84,8 +84,8 @@ Whisper sbaglia tipicamente in questi punti:
 Invece di correggere tutta una bozza, si ascoltano solo i punti in cui due trascrizioni non sono d'accordo ([decisione 0009](decisions/0009-two-models-and-crisperwhisper-license.md), [verifica](../results/2026-10-15-audit-crisper.md)).
 
 ```bash
-uv run ilat adjudicate build it-002          # pagina in data/private/adjudicate/it-002/index.html
-uv run ilat adjudicate apply it-002 ~/Downloads/adjudication-it-002.json
+uv run parola adjudicate build it-002          # pagina in data/private/adjudicate/it-002/index.html
+uv run parola adjudicate apply it-002 ~/Downloads/adjudication-it-002.json
 ```
 
 - Se il file ha già un riferimento, si confronta quello (A) con CrisperWhisper (B). Altrimenti si parte da CrisperWhisper (A) e lo si confronta con Whisper turbo (B).
