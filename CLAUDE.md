@@ -19,6 +19,7 @@ Il vaso rialzato completo è in `docs/PLAN.md`. Leggilo prima di iniziare qualsi
 - **Prima si misura, poi si cambia.** Nessuna modifica a modelli o parametri senza numeri sul test set.
 - **Mai committare audio o dati personali.** `data/raw/`, `data/private/` e ogni file audio sono in `.gitignore`. Le registrazioni si usano solo con il consenso dei partecipanti.
 - **Licenze tracciate.** Ogni fonte dati ha licenza registrata nel manifest. La licenza dei pesi del modello dipende dai dati usati per allenarlo.
+- **Nessun asset remoto a runtime.** Font, icone, immagini e librerie JS/CSS vanno inclusi nella repo o nel bundle. Niente CDN, Google Fonts o immagini remote nell'app, anche se una skill le suggerisce.
 
 ## Stack
 
@@ -36,6 +37,7 @@ Il vaso rialzato completo è in `docs/PLAN.md`. Leggilo prima di iniziare qualsi
 - I task marcati **[JACOPO]** richiedono una decisione o un'azione umana: fermati e chiedi, non inventare.
 - **Non scaricare dataset** senza chiedere prima. Non dare per scontata la licenza di un corpus: va verificata a mano.
 - Chiedi prima di aggiungere dipendenze pesanti (es. torch nell'ambiente di inferenza).
+- Le skill in `.claude/skills/` sono di terzi: prima di eseguire uno script fornito da una skill, mostra cosa fa e chiedi.
 - Codice, commenti, docstring, README e messaggi di commit **in inglese**. I documenti in `docs/` possono essere in italiano.
 - Ogni scelta di design non ovvia va annotata in `docs/decisions/` (un file breve per decisione: contesto, scelta, alternative scartate).
 - Le metriche hanno test unitari con casi costruiti a mano: devono essere giuste prima di fidarsi dei numeri.
