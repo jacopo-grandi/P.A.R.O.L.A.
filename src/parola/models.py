@@ -92,6 +92,7 @@ class ModelDownload:
         self.state = "ready" if models_ready() else "missing"
         self.done = 0
         self.total = APPROX_BYTES
+        self._finished = 0
         self.message = ""
 
     def status(self) -> dict:
@@ -111,12 +112,19 @@ class ModelDownload:
             if self.state in ("downloading", "ready"):
                 return self._status()
             self.state, self.done, self.message = "downloading", 0, ""
+            self._finished = 0  # bytes of the files already downloaded
         threading.Thread(target=self._run, daemon=True).start()
         return self.status()
 
-    def _add(self, n: int) -> None:
+    def _partial(self, n: int) -> None:
+        """``n`` bytes of the file being downloaded now."""
         with self._lock:
-            self.done += int(n)
+            self.done = self._finished + n
+
+    def _file_done(self, size: int) -> None:
+        with self._lock:
+            self._finished += size
+            self.done = self._finished
 
     def _run(self) -> None:
         try:
@@ -142,30 +150,43 @@ class ModelDownload:
         voices = DIARIZATION_BYTES if not _diarization_ready() else 0
         with self._lock:
             self.total = sum(size for *_, size in plan) + voices
-        progress = _progress_class(self._add)
-        for repo, filename, _ in plan:
-            hf_hub_download(repo, filename, tqdm_class=progress)
+        for repo, filename, size in plan:
+            hf_hub_download(repo, filename, tqdm_class=_progress_class(self._partial, size))
+            self._file_done(size)
         if voices:
-            diarize.ensure_models(self._add)
+            received = 0
+
+            def on_bytes(n: int) -> None:
+                nonlocal received
+                received += n
+                self._partial(min(received, voices))
+
+            diarize.ensure_models(on_bytes)
 
 
-def _progress_class(add):
-    """A stand-in for tqdm that hands each download's bytes to ``add``. It has
-    ``update_transfer`` so that huggingface_hub's Xet downloads report one count (bytes written
-    to disk), not two."""
+def _progress_class(report, size: int):
+    """A stand-in for tqdm that reports how much of a ``size``-byte file has arrived.
+
+    huggingface_hub's Xet downloads give two counts: bytes received from the network
+    (``update_transfer``, steady) and bytes written to the file (``update``, which can stall for
+    a minute and then jump while chunks are reassembled). The larger of the two, capped at the
+    file's size, moves steadily and never counts a byte twice."""
 
     class Progress:
         def __init__(self, *args, total=None, initial=0, **kwargs):
-            self.total, self.n = total, initial
-            if initial:
-                add(initial)
+            self.total, self.n, self.received = total, initial, 0
+            self._report()
+
+        def _report(self):
+            report(min(size, max(self.n, self.received)))
 
         def update(self, n=1):
             self.n += n or 0
-            add(n or 0)
+            self._report()
 
         def update_transfer(self, n=1):
-            pass
+            self.received += n or 0
+            self._report()
 
         def __enter__(self):
             return self

@@ -121,3 +121,13 @@ def test_the_app_will_not_record_or_import_without_the_models(monkeypatch, tmp_p
     r = client.post("/api/import?filename=a.wav", content=b"RIFF")
     assert r.status_code == 409
     assert client.get("/api/models").json()["state"] == "missing"
+
+
+def test_progress_follows_the_network_while_the_file_is_reassembled():
+    reports = []
+    bar = models._progress_class(reports.append, 1000)(total=1000)
+    bar.update_transfer(400)  # received, not written yet
+    bar.update(300)  # written: still behind what was received
+    bar.update(500)
+    bar.update_transfer(700)  # more received than the file: compressed chunks re-sent
+    assert reports == [0, 400, 400, 800, 1000]
