@@ -19,14 +19,20 @@ FAKE_HELPER = '''#!{python}
 import json, signal, subprocess, sys, time
 args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
 out, name = args["--out-dir"], args["--name"]
-stop = False
+stop = paused = False
 def handler(*_):
     global stop
     stop = True
+def pause(sig, _):
+    global paused
+    paused = sig == signal.SIGUSR1
 signal.signal(signal.SIGINT, handler)
+signal.signal(signal.SIGUSR1, pause)
+signal.signal(signal.SIGUSR2, pause)
 print("ilat-capture: recording", file=sys.stderr, flush=True)
 while not stop:
-    print('LEVELS {{"mic": -20.0, "system": -12.5}}', file=sys.stderr, flush=True)
+    if not paused:
+        print('LEVELS {{"mic": -20.0, "system": -12.5}}', file=sys.stderr, flush=True)
     time.sleep(0.05)
 for c in ("mic", "system"):
     subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
@@ -75,6 +81,15 @@ def test_session_records_and_transcribes(tmp_path, helper):
     assert session.status()["levels"] == {"mic": -20.0, "system": -12.5}
     with pytest.raises(SessionError):
         session.start()
+    with pytest.raises(SessionError):
+        session.resume()
+    st = session.pause()
+    assert st["paused"] and st["levels"] == {}
+    time.sleep(0.3)
+    assert session.status()["elapsed"] == st["elapsed"]  # the clock stops while paused
+    with pytest.raises(SessionError):
+        session.pause()
+    assert not session.resume()["paused"]
     assert session.stop()["state"] == "transcribing"
     st = wait_for(session, "done")
     assert st["state"] == "done", st
@@ -107,6 +122,10 @@ def test_api_start_status_stop(tmp_path, helper):
     )
     assert client.post("/api/record/start", json={}).status_code == 409
     time.sleep(0.3)
+    assert client.post("/api/record/pause").json()["paused"]
+    assert client.post("/api/record/pause").status_code == 409
+    assert not client.post("/api/record/resume").json()["paused"]
+    assert client.post("/api/record/rewind").status_code == 404
     assert client.post("/api/record/stop").json()["state"] == "transcribing"
     assert wait_for(session, "done")["state"] == "done"
     assert [r["name"] for r in client.get("/api/recordings").json()] == ["c1"]

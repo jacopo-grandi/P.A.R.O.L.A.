@@ -6,6 +6,8 @@
 // Writes DIR/NAME.mic.wav (microphone), DIR/NAME.system.wav (system audio, through a Core Audio
 // process tap: no virtual driver needed, the audio keeps playing) and DIR/NAME.capture.json.
 // Stops after --duration, or on SIGINT / SIGTERM. Requires macOS 14.2+ (decision 0013).
+// SIGUSR1 pauses and SIGUSR2 resumes: while paused nothing is written to either track, so the
+// two files stay aligned with each other (the pause is cut out of both).
 // With --levels, prints the peak level of each track (dBFS) to stderr four times a second:
 //   LEVELS {"mic": -31.2, "system": -12.5}
 
@@ -13,6 +15,10 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+
+// The pause signals would terminate the process before their handlers are installed.
+signal(SIGUSR1, SIG_IGN)
+signal(SIGUSR2, SIG_IGN)
 
 // MARK: - Helpers
 
@@ -90,6 +96,14 @@ func parseOptions() -> Options {
 
 // MARK: - Writers
 
+// Set on the main queue by the pause signals, read by the capture queues.
+let pauseLock = NSLock()
+var pausedFlag = false
+var isPaused: Bool {
+    pauseLock.lock(); defer { pauseLock.unlock() }
+    return pausedFlag
+}
+
 final class Track {
     let file: AVAudioFile
     let format: AVAudioFormat
@@ -105,6 +119,7 @@ final class Track {
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
+        if isPaused { return }
         if let data = buffer.floatChannelData {
             let interleaved = buffer.format.isInterleaved
             let channels = Int(buffer.format.channelCount)
@@ -295,6 +310,16 @@ let sources = [SIGINT, SIGTERM].map { sig -> DispatchSourceSignal in
     s.resume()
     return s
 }
+let pauseSources = [(SIGUSR1, true), (SIGUSR2, false)].map { (sig, value) -> DispatchSourceSignal in
+    let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+    s.setEventHandler {
+        pauseLock.lock(); pausedFlag = value; pauseLock.unlock()
+        log("ilat-capture: " + (value ? "paused" : "resumed"))
+    }
+    s.resume()
+    return s
+}
+_ = pauseSources
 if let duration = options.duration {
     DispatchQueue.main.asyncAfter(deadline: .now() + duration) { finish() }
 }

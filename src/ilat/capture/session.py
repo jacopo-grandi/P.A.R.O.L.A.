@@ -1,8 +1,8 @@
 """A recording started and stopped from the app, transcribed in the background.
 
-One session at a time: ``start`` launches the capture helper with live levels, ``stop`` ends it
-and transcribes the call in a thread (same pipeline as ``ilat record``), ``status`` tells the UI
-what is happening.
+One session at a time: ``start`` launches the capture helper with live levels, ``pause`` and
+``resume`` cut a stretch out of both tracks, ``stop`` ends the capture and transcribes the call in
+a thread (same pipeline as ``ilat record``), ``status`` tells the UI what is happening.
 """
 
 from __future__ import annotations
@@ -48,6 +48,9 @@ class RecordingSession:
         self.name: str | None = None
         self.language: str | None = None
         self.started: float | None = None
+        self.paused_at: float | None = None  # set while paused
+        self.paused_total = 0.0
+        self._ready = False  # the helper said it is recording: its signal handlers are installed
         self.levels: dict[str, float] = {}
         self.message = ""
         self.step = (0, 0)
@@ -73,6 +76,7 @@ class RecordingSession:
                                           text=True)  # fmt: skip
             self.state, self.name, self.language = "recording", name, language
             self.started, self.levels, self.message, self.step = time.time(), {}, "", (0, 0)
+            self.paused_at, self.paused_total, self._ready = None, 0.0, False
             threading.Thread(target=self._read_levels, args=(self._proc,), daemon=True).start()
         return self.status()
 
@@ -80,20 +84,45 @@ class RecordingSession:
         tail: list[str] = []
         for line in proc.stderr:
             if line.startswith("LEVELS "):
+                if self.paused_at is not None:
+                    continue
                 with contextlib.suppress(json.JSONDecodeError):
                     self.levels = json.loads(line[7:])
             else:
+                self._ready = self._ready or "recording" in line
                 tail = [*tail, line.strip()][-5:]
         returncode = proc.wait()
         # The helper ended on its own (not through stop): permission or device problem.
         if self.state == "recording" and proc is self._proc and returncode != 0:
             self.state, self.message = "error", " ".join(tail) or "the capture stopped"
 
+    def pause(self) -> dict:
+        with self._lock:
+            if self.state != "recording" or self._proc is None or self.paused_at is not None:
+                raise SessionError("not recording")
+            if not self._ready:
+                raise SessionError("still starting")
+            self._proc.send_signal(signal.SIGUSR1)
+            self.paused_at, self.levels = time.time(), {}
+        return self.status()
+
+    def resume(self) -> dict:
+        with self._lock:
+            if self.state != "recording" or self._proc is None or self.paused_at is None:
+                raise SessionError("not paused")
+            self._proc.send_signal(signal.SIGUSR2)
+            self.paused_total += time.time() - self.paused_at
+            self.paused_at = None
+        return self.status()
+
     def stop(self) -> dict:
         with self._lock:
             if self.state != "recording" or self._proc is None:
                 raise SessionError("not recording")
             proc = self._proc
+            if self.paused_at is not None:
+                self.paused_total += time.time() - self.paused_at
+                self.paused_at = None
             proc.send_signal(signal.SIGINT)
             # stderr is read by the levels thread: read only stdout here.
             out = proc.stdout.read()
@@ -131,10 +160,14 @@ class RecordingSession:
     # ---------------------------------------------------------------- status
 
     def status(self) -> dict:
-        elapsed = time.time() - self.started if self.state == "recording" and self.started else 0
+        elapsed = 0.0
+        if self.state == "recording" and self.started:
+            now = self.paused_at or time.time()
+            elapsed = now - self.started - self.paused_total
         return {
             "state": self.state,
             "name": self.name,
+            "paused": self.paused_at is not None,
             "elapsed": round(elapsed, 1),
             "levels": self.levels,
             "message": self.message,
