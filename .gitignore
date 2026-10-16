@@ -54,3 +54,6 @@ mlx_models/
 
 # Built helper binaries
 bin/
+
+# Swift build output of the native app
+app/.build/

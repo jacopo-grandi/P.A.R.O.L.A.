@@ -934,7 +934,9 @@ function buildLive(floating) {
     mic.root, system.root);
   const pause = el("button", { class: "icon-btn" });
   const stop = iconButton("stop", "Ferma e trascrivi", () => recAction("stop"), "rec-stop");
-  const pop = floating ? null : iconButton("popout", "Finestra mobile", () => openFloating(false));
+  // In the native app the floating window is the app's own panel (phase 8, step 2).
+  const pop = floating || window.parolaNative ? null
+    : iconButton("popout", "Finestra mobile", () => openFloating(false));
   const root = el("div", { class: floating ? "rec-live pip-bar" : "rec-live" },
     dot, time, meters, pause, pop, stop);
   return {
@@ -1118,6 +1120,7 @@ window.addEventListener("drop", e => {
 });
 
 async function openFloating(auto) {
+  if (window.parolaNative) return;
   if (pip) { pip.focus(); return; }
   if (!("documentPictureInPicture" in window)) {
     if (!auto) toast("La finestra mobile funziona in Chrome e in Edge.");
