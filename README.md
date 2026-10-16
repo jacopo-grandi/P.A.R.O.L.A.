@@ -11,6 +11,42 @@ How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY
 
 Status: in development; the native Mac app works.
 
+![A call in P.A.R.O.L.A.: the transcript with each voice named, doubtful words underlined in yellow, and the player with a tick for every doubtful passage](docs/assets/screenshots/call.png)
+
+## What it looks like
+
+The call in these pictures is invented: a short dialogue about a balcony garden, voiced by two
+macOS text-to-speech voices and transcribed by the app as it is. The mistakes are Whisper's own.
+
+**Review only the doubtful words.** Words that a second model does not confirm are underlined.
+N opens the next one, plays just that passage and makes it editable; Enter saves or confirms.
+
+![Correcting a doubtful passage: the words are in an edit field while their audio plays](docs/assets/screenshots/review.png)
+
+**Search every call.** The search box finds a word in all the transcripts (accents and elided
+articles ignored) and lists where each call says it; Cmd-F finds it inside the call.
+
+![Searching for "basilico": the results in the sidebar and every occurrence marked in the text](docs/assets/screenshots/search.png)
+
+**Read while it transcribes.** The text grows as Whisper writes it; the doubtful words and the
+voices are added when they are ready.
+
+![A call still being transcribed: the provisional text, and its progress in the sidebar](docs/assets/screenshots/growing.png)
+
+**A recorder above every window.** While a call is recorded, a small panel stays on top of Meet
+or any other app, with the time, the levels of both sides, pause and stop. It shrinks to a dot
+and can be dragged anywhere.
+
+<p><img src="docs/assets/screenshots/recorder.png" alt="The floating recorder: a red dot, 12:34, two level meters, pause, stop and shrink" width="252">
+&nbsp;<img src="docs/assets/screenshots/recorder-dot.png" alt="The recorder shrunk to a dot" width="40"></p>
+
+**Asked, never assumed.** On the first start the app says which models it needs and downloads
+them only when you agree. A file you import is asked its language.
+
+![The first-start screen listing the three models, their licences and sizes](docs/assets/screenshots/models.png)
+
+![The language question for an imported file: Italiano, English or Rileva](docs/assets/screenshots/language.png)
+
 ## Install the app
 
 On an Apple Silicon Mac with macOS 14 or later:
