@@ -908,6 +908,7 @@ let pip = null;         // floating window (Document Picture-in-Picture)
 let pollTimer = null;
 
 async function recAction(action, body) {
+  if (action === "start" && !modelsReady()) return;
   try {
     setRecState(await postJSON(`/api/record/${action}`, body));
     if (action === "start") openFloating(true);
@@ -1052,6 +1053,7 @@ let imported = null;    // name of the call being imported from this window
 
 function importFile(file) {
   // The raw file goes in the request body (no form encoding); progress from XHR.
+  if (!modelsReady()) return;
   if (["recording", "transcribing"].includes(recState.state) || uploading) {
     toast("Aspetta che finisca la registrazione o la trascrizione in corso.");
     return;
@@ -1159,6 +1161,83 @@ async function poll() {
   pollTimer = (pip || window).setTimeout(poll, active ? 250 : 3000);
 }
 
+// ---------------------------------------------------------------- first run: the models
+
+// Asked once, before anything is downloaded (no network until the person says yes).
+const MODELS = [
+  ["Whisper large-v3-turbo", "La trascrizione · OpenAI, licenza MIT", "1,6 GB"],
+  ["Parakeet v3", "La seconda opinione sulle parole dubbie · NVIDIA, CC BY 4.0", "2,5 GB"],
+  ["Voci", "Chi parla quando · pyannote (MIT) e WeSpeaker (CC BY 4.0)", "33 MB"],
+];
+let models = { state: "ready" };
+let setupLater = false;   // "Più tardi": the calls already here can still be read
+let setupTimer = null;
+const $setup = el("div", { class: "setup", hidden: true, role: "dialog", "aria-modal": "true",
+                           "aria-labelledby": "setup-title" });
+document.body.append($setup);
+
+function gigabytes(bytes) {
+  return (bytes / 1e9).toLocaleString("it-IT", { minimumFractionDigits: 1,
+                                                 maximumFractionDigits: 1 }) + " GB";
+}
+
+function modelsReady() {
+  if (models.state === "ready") return true;
+  setupLater = false;
+  renderSetup();
+  return false;
+}
+
+function renderSetup() {
+  const st = models.state;
+  $setup.hidden = st === "ready" || (setupLater && st !== "downloading");
+  if ($setup.hidden) return;
+  const card = el("div", { class: "setup-card" },
+    el("h2", { id: "setup-title" }, "Prima di iniziare"),
+    el("p", {}, "P.A.R.O.L.A. trascrive tutto su questo Mac. Per farlo le servono i modelli di " +
+                `riconoscimento vocale: circa ${gigabytes(models.total)}, da scaricare una volta ` +
+                "sola da Hugging Face e GitHub. Dopo, funziona senza rete."),
+    el("ul", { class: "setup-models" }, ...MODELS.map(([name, what, size]) =>
+      el("li", {}, el("span", {}, name, el("small", {}, what)), el("span", { class: "size" }, size)))));
+  if (st === "downloading") {
+    const pct = models.total ? Math.min(99, Math.floor((models.done / models.total) * 100)) : 0;
+    const bar = el("i");
+    bar.style.width = `${pct}%`;
+    card.append(el("div", { class: "setup-bar" }, bar),
+      el("div", { class: "setup-progress" },
+         `${gigabytes(models.done)} di ${gigabytes(models.total)} · ${pct}%`),
+      el("p", {}, "Puoi lasciare la finestra aperta e fare altro: il download continua."));
+  } else {
+    if (st === "error") {
+      card.append(el("p", { class: "err" }, "Download non riuscito: controlla la connessione e " +
+                                            "riprova. Quello già scaricato resta."),
+                  el("p", { class: "setup-detail" }, models.message));
+    }
+    card.append(el("div", { class: "setup-actions" },
+      el("button", { onclick: () => { setupLater = true; renderSetup(); } }, "Più tardi"),
+      el("button", { class: "primary", onclick: startDownload },
+         st === "error" ? "Riprova" : "Scarica i modelli")));
+  }
+  $setup.replaceChildren(card);
+}
+
+async function startDownload() {
+  try { setModels(await postJSON("/api/models/download")); } catch (e) { toast(e.message); }
+}
+
+function setModels(st) {
+  const was = models.state;
+  models = st;
+  renderSetup();
+  if (was === "downloading" && st.state === "ready") toast("Modelli pronti: puoi registrare.");
+  clearTimeout(setupTimer);
+  if (st.state === "downloading") setupTimer = setTimeout(pollModels, 1000);
+}
+
+async function pollModels() {
+  try { setModels(await getJSON("/api/models")); } catch (e) { setupTimer = setTimeout(pollModels, 3000); }
+}
+
 // ---------------------------------------------------------------- routing and keys
 
 async function route() {
@@ -1200,3 +1279,4 @@ document.addEventListener("keydown", e => {
 window.addEventListener("hashchange", route);
 refreshCalls().catch(() => {}).then(route);
 poll();
+pollModels();

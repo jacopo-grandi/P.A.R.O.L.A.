@@ -25,6 +25,7 @@ from parola import editing
 from parola.audio import channel_file
 from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
+from parola.models import ModelDownload
 from parola.schema import Transcript, format_timestamp
 from parola.speakers import label as speaker_label
 from parola.speakers import name as speaker_name
@@ -135,10 +136,12 @@ def to_markdown(t: Transcript, name: str) -> str:
     return "\n".join(lines)
 
 
-def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI:
+def create_app(folder: Path, session: RecordingSession | None = None,
+               models: ModelDownload | None = None) -> FastAPI:  # fmt: skip
     from contextlib import asynccontextmanager
 
     session = session or RecordingSession(folder)
+    models = models or ModelDownload()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -149,12 +152,29 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         title="parola", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
 
+    @app.get("/api/models")
+    def models_status() -> dict:
+        """Whether the speech models are on disk, and the first download's progress."""
+        return models.status()
+
+    @app.post("/api/models/download")
+    def models_download() -> dict:
+        """The first download, only when the person asked for it in the app."""
+        return models.start()
+
+    def require_models() -> None:
+        # Nothing is downloaded behind the person's back: the app asks first (decision 0029).
+        if models.status()["state"] != "ready":
+            raise HTTPException(status_code=409, detail="models not downloaded yet")
+
     @app.get("/api/record/status")
     def record_status() -> dict:
-        return session.status()
+        # The models' state too: the menu bar of the native app reads only this.
+        return {**session.status(), "models": models.status()["state"]}
 
     @app.post("/api/record/start")
     def record_start(req: RecordRequest) -> dict:
+        require_models()
         lang = req.lang if req.lang in ("it", "en") else None
         try:
             return session.start(req.name or None, lang, req.mic, req.system)
@@ -178,6 +198,7 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         ext = Path(filename).suffix.lower()
         if ext not in IMPORT_EXTENSIONS:
             raise HTTPException(status_code=415, detail=f"not an audio or video file: {filename}")
+        require_models()
         if session.status()["state"] in ("recording", "transcribing"):
             raise HTTPException(status_code=409, detail=f"already {session.status()['state']}")
         uploads = folder / ".uploads"

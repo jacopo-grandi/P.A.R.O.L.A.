@@ -109,6 +109,9 @@ final class Engine: ObservableObject {
 
     var recordingState: String { recording["state"] as? String ?? "idle" }
 
+    /// False until the first download of the speech models is done (asked in the window).
+    var modelsReady: Bool { (recording["models"] as? String ?? "ready") == "ready" }
+
     func record(_ action: String) {
         guard let url else { return }
         var request = URLRequest(url: url.appendingPathComponent("api/record/\(action)"))

@@ -27,3 +27,10 @@ def no_speaker_models(monkeypatch):
     """Tests never run (or download) the real voice models: they would depend on this machine.
     A test that needs voices patches ``parola.diarize.diarize`` with a fake."""
     monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def models_on_disk(monkeypatch):
+    """The app believes the speech models are downloaded, whatever this machine has; the first
+    download itself is tested with fakes (test_model_download.py)."""
+    monkeypatch.setattr("parola.models.models_ready", lambda: True)

@@ -78,16 +78,23 @@ struct MenuContent: View {
         case "transcribing":
             Text("Trascrizione in corso…")
         default:
-            Button("Registra una call") { engine.record("start") }
-                .disabled(engine.url == nil)
+            if engine.modelsReady {
+                Button("Registra una call") { engine.record("start") }
+                    .disabled(engine.url == nil)
+            } else {
+                // The first download is asked in the window, with its size and progress.
+                Button("Scarica i modelli…") { open() }
+            }
         }
         Divider()
-        Button("Apri P.A.R.O.L.A.") {
-            openWindow(id: "main")
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        Button("Apri P.A.R.O.L.A.") { open() }
         Divider()
         Button("Esci") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private func open() {
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

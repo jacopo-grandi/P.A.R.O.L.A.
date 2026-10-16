@@ -70,15 +70,22 @@ def available() -> bool:
     return installed() and all(p.exists() for p in MODELS)
 
 
-def ensure_models() -> None:
-    """Download the two models the first time (about 32 MB), checking their SHA-256."""
+def ensure_models(on_bytes: Callable[[int], None] | None = None) -> None:
+    """Download the two models the first time (about 32 MB), checking their SHA-256.
+    ``on_bytes`` is told every block received, in bytes."""
     for path, (url, digest) in MODELS.items():
         if path.exists():
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="parola-diarize-") as tmp:
             download = Path(tmp) / url.rsplit("/", 1)[-1]
-            urllib.request.urlretrieve(url, download)  # a fixed https URL, checked by SHA-256
+
+            def hook(blocks: int, block: int, total: int) -> None:
+                if on_bytes and blocks:
+                    on_bytes(block if total <= 0 else min(block, total - (blocks - 1) * block))
+
+            # A fixed https URL, checked by SHA-256.
+            urllib.request.urlretrieve(url, download, reporthook=hook)
             if download.suffix == ".bz2":
                 with tarfile.open(download) as tar:
                     member = next(m for m in tar.getmembers() if m.name.endswith("/model.onnx"))
