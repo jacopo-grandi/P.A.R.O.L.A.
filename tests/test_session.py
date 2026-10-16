@@ -291,3 +291,16 @@ def test_voices_are_told_apart_on_an_imported_file(tmp_path, monkeypatch):
     ]
     assert "chi parla" in seen
     assert "] Voce 1: ciao a" in (tmp_path / "c.txt").read_text()
+
+
+@requires_ffmpeg
+def test_each_engine_step_releases_the_models(tmp_path, monkeypatch):
+    from parola.capture import recorder
+    from parola.capture.recorder import Recording, transcribe_recording
+
+    released = []
+    monkeypatch.setattr(recorder, "release_models", lambda: released.append(1))
+    tone(tmp_path / "c.mixed.wav")
+    rec = Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+    transcribe_recording(rec, Fake("ciao a tutti"), "it", second=Fake("ciao a voi"))
+    assert len(released) == 2  # after Whisper and after Parakeet: one engine in memory at a time

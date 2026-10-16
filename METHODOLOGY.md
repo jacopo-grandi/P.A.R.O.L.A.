@@ -122,6 +122,12 @@ Voices show as "Altri 1", "Altri 2"..., can be named, and every turn can be move
 voice and undone ([0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md),
 [results](results/2026-10-16-diarization-sherpa.md)).
 
+## Memory
+
+Only one speech model is in memory at a time, and none between calls: for a 6-minute file the
+peak goes from 11.5 GB to 6.1 GB and the waiting server from 10 GB to 0.27 GB, with the same
+time and the same transcript ([0027](docs/decisions/0027-release-speech-models-after-use.md)).
+
 ## Storage
 
 After transcription each channel is stored as FLAC at 16 kHz mono 16-bit: the very signal the
@@ -200,3 +206,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0024](docs/decisions/0024-lossless-audio-after-transcription.md) | Lossless audio after transcription |
 | [0025](docs/decisions/0025-glossary-learned-from-corrections.md) | Glossary learned from corrections: suggests, never corrects |
 | [0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md) | Who speaks: sherpa-onnx with our own grouping, fixable by hand |
+| [0027](docs/decisions/0027-release-speech-models-after-use.md) | Release the speech models after use |

@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from parola import __version__
-from parola.asr import ASRBackend
+from parola.asr import ASRBackend, release_models
 from parola.audio import extract_audio
 from parola.keywords import suggest_title
 from parola.pipeline import transcribe_file
@@ -271,6 +271,9 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         finally:
             if hasattr(engine, "on_progress"):
                 engine.on_progress = None
+            # One engine in memory at a time: peak 4.7 GB instead of 8.8 for a call, same
+            # time and the same transcript (decision 0027).
+            release_models()
 
     for channel in with_speech:
         work = rec.out_dir / f".{rec.name}.{channel}"

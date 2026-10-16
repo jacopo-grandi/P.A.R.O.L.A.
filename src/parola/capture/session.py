@@ -19,6 +19,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from parola.asr import release_models
 from parola.audio import extract_audio, wav_duration
 from parola.capture.recorder import Recording, build_helper, transcribe_recording
 
@@ -151,6 +152,9 @@ class RecordingSession:
             self.state, self.message = "done", ""
         except Exception as e:  # shown in the UI; the audio files stay on disk
             self.state, self.message = "error", f"transcription failed: {e}"
+        finally:
+            # The server waits for the next call: the models have no reason to stay in memory.
+            release_models()
 
     # ---------------------------------------------------------------- importing a file
 
