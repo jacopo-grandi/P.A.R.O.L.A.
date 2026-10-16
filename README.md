@@ -69,7 +69,10 @@ words, on a single track: every voice is on it, so there is no "Io / Altri" spli
 While a file or a recording is being transcribed it shows at the top of the list, with its
 progress.
 
-The sidebar lists the calls by date, with search; the ••• menu renames, suggests a title from the
+The sidebar lists the calls by date. Its search box looks inside every transcript (case, accents
+and elided articles ignored: "perche" finds "perché", "impatto" finds "dell'impatto") and shows
+where each call says it; a result opens the call at that point, with every occurrence marked
+and Enter / Shift-Enter to move between them (Cmd-F searches the open call). The ••• menu renames, suggests a title from the
 content, or deletes (with undo). In a call, doubtful words are highlighted and a click on a word
 plays the audio from there; the menu next to the timeline sets the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
 Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click

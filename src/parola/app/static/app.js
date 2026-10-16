@@ -169,6 +169,7 @@ async function refreshCalls() {
 }
 
 function renderCalls() {
+  if (searchQuery()) { renderResults(); return; }
   const q = $search.value.trim().toLowerCase();
   const shown = calls.filter(c => !q || c.title.toLowerCase().includes(q) ||
                                   c.name.toLowerCase().includes(q));
@@ -262,7 +263,67 @@ function renameInPlace(host, call, proposal) {
   input.addEventListener("blur", () => finish(true));
 }
 
-$search.addEventListener("input", renderCalls);
+// ---------------------------------------------------------------- search
+
+let results = null;     // {q, calls} from /api/search for the query in the box
+let searchTimer = null;
+let searchSeq = 0;
+
+function searchQuery() {
+  const q = $search.value.trim();
+  return q.length >= 2 ? q : "";
+}
+
+async function runSearch() {
+  const q = searchQuery();
+  const seq = ++searchSeq;
+  if (!q) { results = null; renderCalls(); return; }
+  try {
+    const calls = await getJSON(`/api/search?q=${enc(q)}`);
+    if (seq === searchSeq) { results = { q, calls }; renderCalls(); }  // drop late answers
+  } catch (e) { /* server restarting: keep the last results */ }
+}
+
+$search.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  if (!searchQuery()) { results = null; renderCalls(); return; }
+  searchTimer = setTimeout(runSearch, 180);
+});
+$search.addEventListener("keydown", e => {
+  if (e.key === "Escape") { $search.value = ""; results = null; renderCalls(); $search.blur(); }
+});
+
+function hitLink(call, q, i) {
+  return `#/rec/${enc(call.name)}?q=${enc(q)}&hit=${i}`;
+}
+
+function renderResults() {
+  const q = searchQuery();
+  if (!results || results.q !== q) {
+    $calls.replaceChildren(el("p", { class: "empty-list" }, "Cerco…"));
+    return;
+  }
+  const items = [el("div", { class: "group" }, "Risultati")];
+  for (const c of results.calls) {
+    const sub = c.count
+      ? `${c.count} ${c.count === 1 ? "volta" : "volte"} · ${shortWhen(new Date(c.started_at))}`
+      : `nel titolo · ${shortWhen(new Date(c.started_at))}`;
+    const row = el("div", { class: "call-row" + (c.name === recName ? " active" : "") },
+      el("a", { class: "call", href: c.count ? hitLink(c, q, 0) : `#/rec/${enc(c.name)}`,
+                title: c.title },
+        el("span", { class: "title" }, c.title), el("span", { class: "sub" }, sub)));
+    items.push(row);
+    c.hits.forEach((h, i) => {
+      items.push(el("a", { class: "snip", href: hitLink(c, q, i) },
+        el("span", { class: "snip-t" }, clock(h.time)),
+        h.before ? `…${h.before} ` : "", el("mark", {}, h.match), h.after ? ` ${h.after}…` : ""));
+    });
+  }
+  if (!results.calls.length) {
+    items.push(el("p", { class: "empty-list" }, `Nessuna call contiene “${q}”.`));
+  }
+  $calls.replaceChildren(...items);
+}
 
 // ---------------------------------------------------------------- transcript
 
@@ -540,7 +601,24 @@ async function render(data, after) {
   const undoBtn = iconButton("undo", "Annulla l'ultima modifica (⌘Z)", undo);
   undoBtn.disabled = !rec.summary.edits;
   const actions = el("div", { class: "actions" }, view.filter, undoBtn, more);
-  const head = el("header", { class: "call-head" }, view.heading, actions);
+  view.findInput = el("input", { class: "find-input", type: "search", placeholder: "Trova nella call",
+                                 "aria-label": "Trova nella call", autocomplete: "off" });
+  view.findCount = el("span", { class: "find-count", "aria-live": "polite" });
+  view.findInput.addEventListener("input", () => {
+    find = { q: view.findInput.value, index: 0, hits: [] };
+    applyFind(true);
+  });
+  view.findInput.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+  });
+  view.find = el("div", { class: "findbar", hidden: true }, view.findInput, view.findCount,
+    iconButton("prev", "Precedente (Maiusc-Invio)", () => stepFind(-1)),
+    iconButton("next", "Successiva (Invio)", () => stepFind(1)),
+    iconButton("close", "Chiudi la ricerca (Esc)", closeFind));
+  const head = el("header", { class: "call-head" },
+    el("div", { class: "head-row" }, view.heading, actions), view.find);
 
   view.body = body;
   view.scroll = el("div", { class: "scroll" }, body);
@@ -577,6 +655,7 @@ async function render(data, after) {
   renderHeading();
   applyFilter();
   updatePlayButton();
+  if (find) applyFind(false);
   const p = lastChannel && players[lastChannel];
   updateProgress(p ? p.currentTime : 0);
 
@@ -597,8 +676,81 @@ async function render(data, after) {
   }
 }
 
+// ---------------------------------------------------------------- find in the call
+
+let find = null;  // {q, index, hits: [[word, ...], ...]} while the find bar is open
+
+function fold(text) {
+  // Same as parola.search.fold: lowercase, no accents, no punctuation at the edges.
+  return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/^[^\p{L}\p{N}_]+|[^\p{L}\p{N}_]+$/gu, "");
+}
+
+function forms(text) {
+  // "dell'impatto" is found by itself and by "impatto".
+  const f = fold(text);
+  const m = f.match(/^[\p{L}\p{N}_]+['\u2019]([\p{L}\p{N}_].*)$/u);
+  return m ? [f, m[1]] : [f];
+}
+
+function findHits(q) {
+  const tokens = q.split(/\s+/).map(fold).filter(Boolean);
+  if (!tokens.length) return [];
+  const hits = [];
+  const bySeg = new Map();
+  for (const w of words) {
+    if (!bySeg.has(w.seg)) bySeg.set(w.seg, []);
+    bySeg.get(w.seg).push(w);
+  }
+  for (const list of bySeg.values()) {
+    const alts = list.map(w => forms(w.el.textContent));
+    for (let k = 0; k + tokens.length <= list.length; k++) {
+      if (tokens.every((t, i) => alts[k + i].includes(t))) hits.push(list.slice(k, k + tokens.length));
+    }
+  }
+  return hits;
+}
+
+function openFind(q, index = 0, focus = false) {
+  if (!view.find) return;
+  view.findInput.value = q;
+  view.find.hidden = false;
+  find = { q, index, hits: [] };
+  applyFind(true);
+  if (focus || !q) { view.findInput.focus(); view.findInput.select(); }
+}
+
+function closeFind() {
+  find = null;
+  document.querySelectorAll(".w.hit").forEach(e => e.classList.remove("hit", "hit-now"));
+  if (view.find) view.find.hidden = true;
+}
+
+function applyFind(scroll) {
+  if (!view.find) return;
+  document.querySelectorAll(".w.hit").forEach(e => e.classList.remove("hit", "hit-now"));
+  view.find.hidden = false;
+  if (view.findInput.value !== find.q) view.findInput.value = find.q;
+  find.hits = findHits(find.q);
+  const n = find.hits.length;
+  find.index = n ? ((find.index % n) + n) % n : 0;
+  for (const hit of find.hits) for (const w of hit) w.el.classList.add("hit");
+  view.findCount.textContent = !find.q.trim() ? "" : n ? `${find.index + 1} di ${n}` : "nessuna";
+  if (!n) return;
+  const current = find.hits[find.index];
+  for (const w of current) w.el.classList.add("hit-now");
+  if (scroll) current[0].el.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function stepFind(direction) {
+  if (!find || !find.hits.length) return;
+  find.index += direction;
+  applyFind(true);
+}
+
 async function showRecording(name) {
   stopAll();
+  find = null;  // a search belongs to the call it was made in
   recName = name;
   renderCalls();
   const data = await getJSON(`/api/recordings/${enc(name)}`);
@@ -897,10 +1049,16 @@ async function poll() {
 // ---------------------------------------------------------------- routing and keys
 
 async function route() {
-  const m = location.hash.match(/^#\/rec\/(.+)$/);
+  const m = location.hash.match(/^#\/rec\/([^?]+)(?:\?(.*))?$/);
   try {
-    if (m) await showRecording(decodeURIComponent(m[1]));
-    else showEmpty();
+    if (m) {
+      const name = decodeURIComponent(m[1]);
+      const params = new URLSearchParams(m[2] || "");
+      // Another hit in the call already open: no reload, the audio keeps its place.
+      if (name !== recName || !rec) await showRecording(name);
+      else renderCalls();
+      if (params.get("q")) openFind(params.get("q"), Number(params.get("hit") || 0));
+    } else showEmpty();
   } catch (e) {
     $main.replaceChildren(el("div", { class: "placeholder" },
       el("h2", {}, "Non trovata"), el("p", {}, e.message)));
@@ -909,6 +1067,11 @@ async function route() {
 
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $search.focus(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === "f" && rec) {
+    e.preventDefault();
+    openFind(find ? find.q : "", find ? find.index : 0, true);
+    return;
+  }
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (!Object.keys(players).length) return;
   if (e.key === " ") { e.preventDefault(); togglePlay(); }

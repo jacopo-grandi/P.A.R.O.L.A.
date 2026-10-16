@@ -165,3 +165,15 @@ def test_title_suggestion_saves_nothing(client, folder):
     assert r["title"] is None  # four words: too short for a title
     assert r["phrases"] == []  # "ciao", "buongiorno": greetings, not topics
     assert (folder / "call.json").read_text() == before
+
+
+def test_search_across_calls(client):
+    r = client.get("/api/search", params={"q": "TUTTI"}).json()
+    assert [c["name"] for c in r] == ["call"] and r[0]["count"] == 1
+    hit = r[0]["hits"][0]
+    assert (hit["segment"], hit["word"], hit["match"], hit["before"]) == (0, 2, "tutti", "ciao a")
+    assert client.get("/api/search", params={"q": "assente"}).json() == []
+    assert client.get("/api/search", params={"q": " "}).json() == []
+    client.post("/api/recordings/call/rename", json={"title": "Cena di sabato"})
+    r = client.get("/api/search", params={"q": "sabato"}).json()
+    assert r[0]["count"] == 0 and r[0]["title"] == "Cena di sabato"  # found by its title

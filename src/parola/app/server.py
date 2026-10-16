@@ -178,6 +178,34 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
     def index() -> str:
         return (STATIC / "index.html").read_text(encoding="utf-8")
 
+    cache: dict[Path, tuple[float, Transcript]] = {}
+
+    def cached(path: Path) -> Transcript:
+        """Transcripts parsed once per change, so a search per keystroke stays fast."""
+        mtime = path.stat().st_mtime
+        if path not in cache or cache[path][0] != mtime:
+            cache[path] = (mtime, Transcript.load(path))
+        return cache[path][1]
+
+    @app.get("/api/search")
+    def search(q: str, limit: int = 3) -> list[dict]:
+        """Calls whose words (or title) match ``q``, newest first, with their first hits."""
+        from dataclasses import asdict
+
+        from parola.search import find, fold, query_tokens
+
+        if not query_tokens(q):
+            return []
+        wanted = " ".join(query_tokens(q))
+        out = []
+        for name in recordings(folder):
+            hits = find(cached(folder / f"{name}.json"), q)
+            s = summary(folder, name)
+            in_title = wanted in " ".join(fold(w) for w in s["title"].split())
+            if hits or in_title:
+                out.append({**s, "count": len(hits), "hits": [asdict(h) for h in hits[:limit]]})
+        return sorted(out, key=lambda r: r["started_at"], reverse=True)
+
     @app.get("/api/recordings")
     def list_recordings() -> list[dict]:
         out = [summary(folder, n) for n in recordings(folder)]
