@@ -72,7 +72,7 @@ fi
 ok "uv $(uv --version | cut -d' ' -f2)"
 ok "ffmpeg $(ffmpeg -version | head -1 | cut -d' ' -f3)"
 
-step "Installing the Python packages (uv sync: a few hundred MB, the first time)"
+step "Installing the Python packages (uv sync: about 1.3 GB, the first time)"
 uv sync --inexact  # adds what is missing, removes nothing (e.g. the optional baselines)
 ok "packages in .venv"
 

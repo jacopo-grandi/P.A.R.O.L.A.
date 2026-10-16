@@ -364,8 +364,9 @@ def cmd_serve(args) -> int:
     from parola.app.server import create_app
 
     if not args.dir.is_dir():
-        print(f"error: {args.dir} does not exist", file=sys.stderr)
-        return 1
+        # A fresh clone has no data/private/calls yet: the first call goes there.
+        args.dir.mkdir(parents=True)
+        print(f"parola: created {args.dir} for the calls", file=sys.stderr)
     import socket
 
     with socket.socket() as probe:
