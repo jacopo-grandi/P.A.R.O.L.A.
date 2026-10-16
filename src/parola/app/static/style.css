@@ -155,12 +155,14 @@ svg { display: block; }
 
 .call-head { padding: 20px 32px 14px; border-bottom: 1px solid var(--line); }
 .head-row { display: flex; align-items: flex-start; gap: 16px; }
-.findbar { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
-.findbar[hidden] { display: none; }
-.find-input { flex: 0 1 280px; padding: 5px 10px; border-radius: var(--radius); outline: none;
-              border: 1px solid var(--line); background: var(--raise); font-size: var(--text-small); }
+.findbar { display: flex; align-items: center; gap: 2px; flex: none; padding-top: 1px; }
+.find-nav { display: flex; align-items: center; gap: 2px; }
+.find-nav[hidden] { display: none; }
+.find-input { width: 200px; padding: 4px 10px; border-radius: var(--radius); outline: none;
+              border: 1px solid transparent; background: var(--raise); font-size: var(--text-small); }
+.find-input::placeholder { color: var(--fg-3); }
 .find-input:focus { border-color: var(--accent); }
-.find-count { min-width: 64px; padding: 0 6px; font-size: var(--text-caption); color: var(--fg-3);
+.find-count { min-width: 56px; padding: 0 4px 0 8px; font-size: var(--text-caption); color: var(--fg-3);
               font-variant-numeric: tabular-nums; }
 .call-head .heading { flex: 1; min-width: 0; }
 .call-head h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui);

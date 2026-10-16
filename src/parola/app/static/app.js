@@ -601,7 +601,8 @@ async function render(data, after) {
   const undoBtn = iconButton("undo", "Annulla l'ultima modifica (⌘Z)", undo);
   undoBtn.disabled = !rec.summary.edits;
   const actions = el("div", { class: "actions" }, view.filter, undoBtn, more);
-  view.findInput = el("input", { class: "find-input", type: "search", placeholder: "Trova nella call",
+  view.findInput = el("input", { class: "find-input", type: "search",
+                                 placeholder: "Trova nella call  ⌘F",
                                  "aria-label": "Trova nella call", autocomplete: "off" });
   view.findCount = el("span", { class: "find-count", "aria-live": "polite" });
   view.findInput.addEventListener("input", () => {
@@ -611,14 +612,17 @@ async function render(data, after) {
   view.findInput.addEventListener("keydown", e => {
     e.stopPropagation();
     if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
-    else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+    else if (e.key === "Escape") { e.preventDefault(); closeFind(); view.findInput.blur(); }
   });
-  view.find = el("div", { class: "findbar", hidden: true }, view.findInput, view.findCount,
+  // Always there, like the search field of a Mac app; the arrows show once something is typed.
+  view.findNav = el("span", { class: "find-nav" }, view.findCount,
     iconButton("prev", "Precedente (Maiusc-Invio)", () => stepFind(-1)),
     iconButton("next", "Successiva (Invio)", () => stepFind(1)),
-    iconButton("close", "Chiudi la ricerca (Esc)", closeFind));
+    iconButton("close", "Svuota la ricerca (Esc)", closeFind));
+  view.find = el("div", { class: "findbar" }, view.findInput, view.findNav);
+  view.findNav.hidden = true;
   const head = el("header", { class: "call-head" },
-    el("div", { class: "head-row" }, view.heading, actions), view.find);
+    el("div", { class: "head-row" }, view.heading, view.find, actions));
 
   view.body = body;
   view.scroll = el("div", { class: "scroll" }, body);
@@ -714,7 +718,6 @@ function findHits(q) {
 function openFind(q, index = 0, focus = false) {
   if (!view.find) return;
   view.findInput.value = q;
-  view.find.hidden = false;
   find = { q, index, hits: [] };
   applyFind(true);
   if (focus || !q) { view.findInput.focus(); view.findInput.select(); }
@@ -723,14 +726,15 @@ function openFind(q, index = 0, focus = false) {
 function closeFind() {
   find = null;
   document.querySelectorAll(".w.hit").forEach(e => e.classList.remove("hit", "hit-now"));
-  if (view.find) view.find.hidden = true;
+  if (view.findInput) view.findInput.value = "";
+  if (view.findNav) view.findNav.hidden = true;
 }
 
 function applyFind(scroll) {
   if (!view.find) return;
   document.querySelectorAll(".w.hit").forEach(e => e.classList.remove("hit", "hit-now"));
-  view.find.hidden = false;
   if (view.findInput.value !== find.q) view.findInput.value = find.q;
+  view.findNav.hidden = !find.q.trim();
   find.hits = findHits(find.q);
   const n = find.hits.length;
   find.index = n ? ((find.index % n) + n) % n : 0;
