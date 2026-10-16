@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from parola import editing
 from parola.audio import channel_file
+from parola.audio.playback import forget, playable
 from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
 from parola.models import ModelDownload
@@ -344,6 +345,7 @@ def create_app(folder: Path, session: RecordingSession | None = None,
         dest.mkdir(parents=True)
         for f in owned_files(folder, name):
             shutil.move(f, dest / f.name)
+        forget(folder, name, CHANNELS)  # the copy for the player goes too
         return {"name": name, "trashed": entry}
 
     @app.post("/api/trash/{entry}/restore")
@@ -413,8 +415,8 @@ def create_app(folder: Path, session: RecordingSession | None = None,
         path = channel_file(folder, name, channel) if channel in CHANNELS else None
         if path is None:
             raise HTTPException(status_code=404, detail="no such audio")
-        media = "audio/flac" if path.suffix == ".flac" else "audio/wav"
-        return FileResponse(path, media_type=media)
+        # WAV, not the stored FLAC: WebKit (the native app) cannot seek in FLAC.
+        return FileResponse(playable(folder, path), media_type="audio/wav")
 
     @app.get("/export/{name}.{fmt}")
     def export(name: str, fmt: str):

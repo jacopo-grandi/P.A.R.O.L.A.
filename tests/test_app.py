@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from parola.app.server import create_app
 from parola.schema import Metadata, Segment, Transcript, Word
+from tests.conftest import requires_ffmpeg
 
 
 @pytest.fixture
@@ -179,14 +180,25 @@ def test_search_across_calls(client):
     assert r[0]["count"] == 0 and r[0]["title"] == "Cena di sabato"  # found by its title
 
 
-def test_a_compressed_call_is_listed_and_played(client, folder):
+@requires_ffmpeg
+def test_a_compressed_call_is_listed_and_played_as_wav(client, folder):
+    import subprocess
+
     for c in ("mic", "system"):
-        (folder / f"call.{c}.wav").rename(folder / f"call.{c}.flac")
+        (folder / f"call.{c}.wav").unlink()
+        subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "sine=duration=1:sample_rate=16000", "-c:a", "flac",
+                        str(folder / f"call.{c}.flac")], check=True)  # fmt: skip
     assert [r["name"] for r in client.get("/api/recordings").json()] == ["call"]
     assert set(client.get("/api/recordings/call").json()["audio"]) == {"mic", "system"}
-    r = client.get("/audio/call/mic")
-    assert r.status_code == 200 and r.headers["content-type"] == "audio/flac"
+    r = client.get("/audio/call/mic", headers={"Range": "bytes=0-3"})
+    # The player gets WAV, which WebKit can seek in, and can ask for parts of it.
+    assert r.status_code == 206 and r.headers["content-type"] == "audio/wav"
+    assert r.content == b"RIFF"
     assert client.get("/audio/call/nope").status_code == 404
+    assert len(list((folder / ".playback").glob("call.mic.*.wav"))) == 1
+    client.delete("/api/recordings/call")
+    assert list((folder / ".playback").glob("call.*.wav")) == []  # deleted with the call
 
 
 def test_suggestions_come_only_from_your_own_corrections(client):
