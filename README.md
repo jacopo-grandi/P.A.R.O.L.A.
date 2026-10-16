@@ -71,7 +71,7 @@ progress.
 
 The sidebar lists the calls by date, with search; the ••• menu renames, suggests a title from the
 content, or deletes (with undo). In a call, doubtful words are highlighted and a click on a word
-plays the audio from there; the button next to the timeline changes the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
+plays the audio from there; the menu next to the timeline sets the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
 Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click
 edits any word, Cmd-Z undoes. Every change is logged with the model's original text, which is also
 kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the browser's print.

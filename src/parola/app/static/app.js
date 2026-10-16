@@ -4,7 +4,7 @@
 // "mixed": an imported file, every voice on one track, so no side to name.
 const LABELS = { mic: "Io", system: "Altri", mixed: "" };
 const LEAD = 0.25;         // start playing a little before the word
-const SPEEDS = [1, 1.25, 1.5, 2, 0.75];  // one click moves to the next
+const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
 const EXCERPT_TAIL = 1.0;  // a doubtful run plays until this long after its last word
 const LANGS = [["", "Auto"], ["it", "IT"], ["en", "EN"]];
 
@@ -294,10 +294,7 @@ function setSpeed(v) {
   speed = v;
   for (const p of Object.values(players)) p.playbackRate = v;
   try { localStorage.setItem("speed", String(v)); } catch (e) { /* not remembered */ }
-  if (view.speed) {
-    view.speed.textContent = speedLabel(v);
-    view.speed.classList.toggle("on", v !== 1);
-  }
+  if (view.speed) view.speed.classList.toggle("on", v !== 1);
 }
 
 function stopAll() {
@@ -568,11 +565,10 @@ async function render(data, after) {
          el("b", {}, String(runs.length)), "da rivedere",
          iconButton("next", "Prossima dubbia (N)", () => jump(1)))
     : el("div", { class: "review clear" }, el("b", {}, "✓"), "Tutto rivisto");
-  view.speed = el("button", { class: "speed", title: "Velocità di riproduzione",
+  view.speed = el("select", { class: "speed", title: "Velocità di riproduzione",
                               "aria-label": "Velocità di riproduzione",
-                              onclick: () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1)
-                                                             % SPEEDS.length]) },
-    speedLabel(speed));
+                              onchange: e => setSpeed(Number(e.target.value)) },
+    ...SPEEDS.map(v => el("option", { value: String(v), selected: v === speed }, speedLabel(v))));
   view.speed.classList.toggle("on", speed !== 1);
   const player = el("footer", { class: "player" }, view.play, view.clock, timeline, view.speed,
     review);

@@ -224,9 +224,9 @@ kbd { font: var(--text-caption) var(--font-num); padding: 0 4px; border: 1px sol
                   background: var(--fg-2); border-radius: 1px; }
 .timeline .tick { position: absolute; top: 10px; width: 1px; height: 8px;
                   background: var(--doubt); opacity: 0.35; }
-.speed { flex: none; min-width: 44px; padding: 3px 8px; border-radius: 6px;
+.speed { flex: none; padding: 3px 6px; border: 0; border-radius: 6px; background: var(--raise);
          font: 600 var(--text-caption) var(--font-num); font-variant-numeric: tabular-nums;
-         color: var(--fg-3); }
+         color: var(--fg-3); cursor: pointer; }
 .speed:hover { background: var(--hover); color: var(--fg); }
 .speed.on { color: var(--fg); background: var(--raise); }
 .review { font-size: var(--text-caption); color: var(--fg-3); flex: none; display: flex; align-items: center;
