@@ -220,9 +220,9 @@ These rules are checked by automated tests (Phase 6).
 
 ## 4. Effects on the metrics (preview of Phase 2)
 
-- **Fidelity WER** (primary metric, [decision 0010](decisions/0010-fidelity-metric.md)): `filler`, `truncated`, `repetition`, `reduplication`, `false_start`, `edit_term`, non-verbal events and `[inaudibile]` are removed, and immediate repetitions are collapsed. Numbers, spellings, capitals and punctuation are normalised. What counts is whether the words are the ones spoken: rewrites, paraphrases and grammatical "corrections" are errors. The report shows substitutions separately.
+- **Fidelity WER** (primary metric): `filler`, `truncated`, `repetition`, `reduplication`, `false_start`, `edit_term`, non-verbal events and `[inaudibile]` are removed, and immediate repetitions are collapsed. Numbers, spellings, capitals and punctuation are normalised. What counts is whether the words are the ones spoken: rewrites, paraphrases and grammatical "corrections" are errors. The report shows substitutions separately.
 - **Verbatim WER:** only non-verbal events and `[inaudibile]` are removed; everything else counts.
-- **Literal WER** ([decision 0007](decisions/0007-literal-fidelity-first.md)): fillers, non-verbal events and `[inaudibile]` are removed; repetitions, false starts, truncated words and grammatical errors count. Only capitals and punctuation are normalised.
+- **Literal WER**: fillers, non-verbal events and `[inaudibile]` are removed; repetitions, false starts, truncated words and grammatical errors count. Only capitals and punctuation are normalised.
 - **Disfluencies:** for `filler`, `truncated`, `repetition`, `false_start` and `edit_term`, we measure how many of the words marked in the reference the model keeps and how many it invents. `reduplication` and `backchannel` are reported separately, not as disfluencies.
 - **Excluded from all metrics:** `overlap` segments (measured separately); `uncertain` words are excluded or weighted separately.
 - **Quality of the references** (`reference_quality` field of the manifest):

@@ -60,3 +60,6 @@ app/.build/
 
 # The working plan: local notes, not published
 docs/PLAN.md
+
+# Decision notes: internal, kept local
+docs/decisions/

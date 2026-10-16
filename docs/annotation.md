@@ -81,7 +81,7 @@ Whisper typically makes mistakes in these places:
 
 ## `adjudicated` references (listening only to the disagreements)
 
-Instead of correcting a whole draft, you listen only to the points where two transcripts do not agree ([decision 0009](decisions/0009-two-models-and-crisperwhisper-license.md), [audit](../results/2026-10-15-audit-crisper.md)).
+Instead of correcting a whole draft, you listen only to the points where two transcripts do not agree ([audit](../results/2026-10-15-audit-crisper.md)).
 
 ```bash
 uv run parola adjudicate build it-002          # page in data/private/adjudicate/it-002/index.html

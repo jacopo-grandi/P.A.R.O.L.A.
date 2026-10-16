@@ -1,6 +1,6 @@
 # Baseline of 2026-10-15 — analysis
 
-> **Update:** the primary metric is now the **fidelity WER** ([decision 0010](../docs/decisions/0010-fidelity-metric.md)), that is the former "classic WER" with the same values. On the silver references: turbo 3.3% (1.4% substitutions), CrisperWhisper 9.1% (2.8%), Parakeet 14.1% (4.9%). Those references start from turbo: the final numbers will come with the `adjudicated` references. The tables below still use the literal WER, the primary metric until 0010.
+> **Update:** the primary metric is now the **fidelity WER**, that is the former "classic WER" with the same values. On the silver references: turbo 3.3% (1.4% substitutions), CrisperWhisper 9.1% (2.8%), Parakeet 14.1% (4.9%). Those references start from turbo: the final numbers will come with the `adjudicated` references. The tables below still use the literal WER, the primary metric until 0010.
 
 References: it-002 (16 min) and en-002 (29 min), both `silver`. Full reports: [seed 0](2026-10-15-baseline.md), [seed 1](2026-10-15-baseline-seed1.md), [seed 2](2026-10-15-baseline-seed2.md).
 

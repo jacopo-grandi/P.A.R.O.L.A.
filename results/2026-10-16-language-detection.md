@@ -19,6 +19,6 @@
 
 On en-001 the raw audio windows say English everywhere (0.86–1.00 on 14 windows from 0 to 3521 s), except the one at 30 s (en 0.55, it 0.39). Gluing moves the decision to Italian: short pieces joined together seem to weigh the accent more than the language.
 
-**Decision.** 5 windows (decision [0030](../docs/decisions/0030-language-from-windows-and-asked-on-import.md)): 4 out of 4, always with a margin. The final module (`parola.asr.language.detect`), tried on the same 4 files, gives 4 out of 4. On it-002 and en-002, the two files with a reference, the chosen language does not change, so the measured WERs stay those of `results/2026-10-15-vad.md`.
+**Decision.** 5 windows: 4 out of 4, always with a margin. The final module (`parola.asr.language.detect`), tried on the same 4 files, gives 4 out of 4. On it-002 and en-002, the two files with a reference, the chosen language does not change, so the measured WERs stay those of `results/2026-10-15-vad.md`.
 
 **Limits.** Four files are few; there is no mixed IT/EN file in which the main language is uncertain. Cost measured on en-001: 1.9 s (reading the audio included, model already loaded) on an M4 Pro, against about 7 minutes of transcription.

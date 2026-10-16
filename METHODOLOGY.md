@@ -1,8 +1,7 @@
 # Methodology
 
 How P.A.R.O.L.A. decides what a transcript should be, how it is measured and why each model and
-setting was chosen. Each choice has a short decision note in [`docs/decisions/`](docs/decisions/),
-and each number links to the report it comes from in [`results/`](results/).
+setting was chosen. Each number links to the report it comes from in [`results/`](results/).
 
 ## Summary
 
@@ -21,8 +20,7 @@ references), and the limitations are listed at the end.
 
 ## Pipeline
 
-Each stage, with what it costs on an hour of audio (en-001, M4 Pro,
-[0031](docs/decisions/0031-provisional-text-after-whisper.md)):
+Each stage, with what it costs on an hour of audio (en-001, M4 Pro):
 
 | Stage | What it does | Time per hour |
 |---|---|---|
@@ -42,23 +40,22 @@ Each stage, with what it costs on an hour of audio (en-001, M4 Pro,
 - **The verbatim transcript is the source of truth.** Anything derived from it (a clean version,
   key phrases, a title) can only remove or normalise, never add, and every word traces back to a
   timestamp in the audio.
-- **Fidelity over pure verbatim.** Losing an "ehm" is acceptable; rewriting what was said is not
-  (decision [0010](docs/decisions/0010-fidelity-metric.md)). Grammar mistakes stay as spoken.
+- **Fidelity over pure verbatim.** Losing an "ehm" is acceptable; rewriting what was said is not.
+  Grammar mistakes stay as spoken.
 - **The machine flags, the person decides.** Words the model may have got wrong are marked, and
-  only the person corrects them. Nothing is corrected automatically
-  ([0014](docs/decisions/0014-doubtful-words.md), [0015](docs/decisions/0015-app-product-direction.md)).
+  only the person corrects them. Nothing is corrected automatically.
 - **Measure before changing.** No model or parameter changes without numbers on the test set.
 
 ## Test set and references
 
 - Four recordings with the speakers' consent: it-001 (85 min), it-002 (17 min), en-001 (60 min)
   and en-002 (29 min). They are never committed. Only the manifest is in the repository, with
-  each source and its licence ([0004](docs/decisions/0004-training-corpora-licenses.md)).
+  each source and its licence.
 - The transcription conventions (fillers, truncated words, repetitions, overlaps) are in
   [`docs/conventions.md`](docs/conventions.md). The annotation workflow is in
   [`docs/annotation.md`](docs/annotation.md).
-- **References are "silver"**: a model draft checked word by word by a person
-  ([0005](docs/decisions/0005-silver-references.md)). The drafts came from Whisper turbo, which
+- **References are "silver"**: a model draft checked word by word by a person.
+  The drafts came from Whisper turbo, which
   biases the comparison in turbo's favour. To reduce that bias, it-002 and en-002 were
   **adjudicated**: wherever turbo and CrisperWhisper disagreed, a person listened and chose.
   Clear cases (repetitions, truncated words, extra words actually spoken) were accepted by a
@@ -70,13 +67,12 @@ Each stage, with what it costs on an hour of audio (en-001, M4 Pro,
 
 ## Metrics
 
-Three word error rates, from strictest to most lenient
-([0008](docs/decisions/0008-evaluation-design.md), [0010](docs/decisions/0010-fidelity-metric.md)):
+Three word error rates, from strictest to most lenient:
 
 | Metric | What counts as an error |
 |---|---|
 | **Fidelity WER** (primary) | Words that are not the ones spoken. Fillers, repetitions, truncated words and false starts are ignored. |
-| Literal WER | Like fidelity, but repetitions and truncated words count ([0007](docs/decisions/0007-literal-fidelity-first.md)). |
+| Literal WER | Like fidelity, but repetitions and truncated words count. |
 | Verbatim WER | Everything counts, fillers included, mapped to one spelling per filler. |
 
 Plus filler recall and precision, the share of substitutions (the direct sign of rewording) and
@@ -95,19 +91,17 @@ On the adjudicated references ([report](results/2026-10-15-adjudicated.md); fide
 | Parakeet TDT 0.6B v3 | 16.7 | 10.1 | 0.013 | CC BY 4.0 |
 | Whisper large-v3 | 27.2 | 21.9 | 0.138 | MIT |
 
-- **Turbo is the default** ([0011](docs/decisions/0011-default-engine-turbo.md)): the best in
+- **Turbo is the default**: the best in
   Italian, close in English, fast and freely licensed. It drops almost all fillers, which the
   fidelity metric accepts.
 - **CrisperWhisper is optional**: the best in English and the most verbatim (96% filler recall),
-  but its weights are non-commercial and it is worse in Italian
-  ([0009](docs/decisions/0009-two-models-and-crisperwhisper-license.md)).
+  but its weights are non-commercial and it is worse in Italian.
 - **What did not help:** a "disfluency" prompt (fidelity WER from 5.1 to 7.8 overall) and a
   personal glossary given to Whisper as a prompt (5.1 to 8.6–9.5,
   [report](results/2026-10-16-glossary.md)). The glossary fixed about half of the domain terms
   but made everything else worse. Model runs use a fixed random seed, because Whisper's
   temperature fallback otherwise samples at random.
-- **Fine-tuning is parked.** The plan, an English-first LoRA on freely licensed data, is in
-  [0006](docs/decisions/0006-english-only-training-first.md).
+- **Fine-tuning is parked.** The plan is an English-first LoRA on freely licensed data.
 
 ## Language
 
@@ -118,8 +112,7 @@ said Italian for an Italian speaking English. Now the guess is the average of Wh
 probabilities on 5 raw 30-second windows that start on speech, spread over the whole recording,
 and only Italian and English can win. On the four test-set files: 4 of 4 right, against 3 of 4,
 in 1.9 seconds; the language of it-002 and en-002 does not change, so their error rates do not
-either ([0030](docs/decisions/0030-language-from-windows-and-asked-on-import.md),
-[report](results/2026-10-16-language-detection.md)). When a file is imported the app asks its
+either ([report](results/2026-10-16-language-detection.md)). When a file is imported the app asks its
 language first (Italiano, English or detect), since the person usually knows it.
 
 ## Doubtful words and the correction loop
@@ -132,11 +125,11 @@ the next ones.
 
 Each call is transcribed by Whisper large-v3-turbo (the transcript the person reads) and by
 Parakeet TDT 0.6B v3, a second opinion with a different architecture (a transducer) and different
-training data ([0014](docs/decisions/0014-doubtful-words.md)).
+training data.
 
 1. **Same tokens as the metric.** Both transcripts are cut into fidelity tokens: fillers and
-   repetitions are left out and numbers and spellings are normalised as in the fidelity WER
-   ([0010](docs/decisions/0010-fidelity-metric.md)). A disagreement on an "ehm" is not a doubt.
+   repetitions are left out and numbers and spellings are normalised as in the fidelity WER.
+   A disagreement on an "ehm" is not a doubt.
 2. **Alignment.** The two token sequences are aligned by edit distance, with the same alignment
    the WER uses.
 3. **Flags.** A turbo word is doubtful when Parakeet replaces it or does not have it, and both
@@ -174,7 +167,7 @@ person wrote (`text`), where, and its kind (correction, confirmation, voice chan
 untouched output is kept next to it as `<name>.asr.json`. So each reviewed call adds pairs of
 "what the model heard" and "what was said", and labels its flags as right or wrong.
 
-Today this corpus feeds a personal glossary ([0025](docs/decisions/0025-glossary-learned-from-corrections.md)):
+Today this corpus feeds a personal glossary:
 
 | Step | Rule | Parameter |
 |---|---|---|
@@ -191,14 +184,13 @@ fixed about half of the domain terms but raised the fidelity WER from 5.1 to 8.6
 
 Not measured yet, and the reason to keep the corpus: the confirmations measure the flags'
 precision on real calls instead of on the test set; reviewed calls can become references; with
-the participants' consent, the pairs are training data for the fine-tuning parked in
-[0006](docs/decisions/0006-english-only-training-first.md).
+the participants' consent, the pairs are training data for the fine-tuning that is parked.
 
 ## Recording calls
 
 - **Capture:** Core Audio process taps record the microphone ("Io") and the system audio
   ("Altri") into two files, so speakers are told apart by channel rather than guessed. No
-  virtual audio driver is needed ([0013](docs/decisions/0013-capture-with-core-audio-taps.md)).
+  virtual audio driver is needed.
 - **Echo:** a microphone segment whose words are mostly the same as the other channel's at the
   same time (60% or more) is your speakers leaking into the microphone, and is dropped.
 - **Voice activity detection:** only stretches with sound are transcribed, to keep Whisper from
@@ -214,30 +206,27 @@ CPU only) finds where someone speaks; its pieces are regrouped by our own spectr
 (NME-SC) over 3-second voice prints. On two AMI test meetings this gets the diarization error
 rate from 47% (sherpa-onnx alone) to 30%; pyannote reports 17-19% on the whole AMI test set.
 Voices show as "Altri 1", "Altri 2"..., can be named, and every turn can be moved to another
-voice and undone ([0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md),
-[results](results/2026-10-16-diarization-sherpa.md)).
+voice and undone ([results](results/2026-10-16-diarization-sherpa.md)).
 
 ## Time and memory
 
 An hour of audio takes about 7 minutes 50 seconds on an M4 Pro (stages in "Pipeline"). Only one
 speech model is in memory at a time, and none between calls: for a 6-minute file the peak goes
 from 11.5 GB to 6.1 GB and the waiting server from 10 GB to 0.27 GB, with the same time and the
-same transcript ([0027](docs/decisions/0027-release-speech-models-after-use.md)).
+same transcript.
 
 The person does not wait for the end to read. Each 30-second window Whisper decodes is shown as
 soon as it is done, then the doubtful words, then the voices; the text can be corrected once it is
 final. The windows are read from Whisper's own decoding loop without changing it: on en-002 the
 final transcript is identical, word for word with the same times, doubtful words and voices,
-to the one made before ([0031](docs/decisions/0031-provisional-text-after-whisper.md),
-[0033](docs/decisions/0033-text-grows-while-whisper-works.md)).
+to the one made before.
 
 ## Storage
 
 After transcription each channel is stored as FLAC at 16 kHz mono 16-bit: the very signal the
 models get, losslessly, at about 100 MB per hour of call instead of about 2 GB. A lossy codec
 was measured and rejected: re-encoding the test set as AAC at 32-48 kbps raised turbo's fidelity
-WER from about 5% to 9-12%
-([0024](docs/decisions/0024-lossless-audio-after-transcription.md)).
+WER from about 5% to 9-12%.
 
 Clicking a word plays the audio from there, so the player must land on the right second. The
 native app's window is WebKit, and WebKit cannot seek in FLAC: on an hour-long test file with a
@@ -245,31 +234,25 @@ beep on every minute, after a jump the beep came tens of seconds late or not at 
 without a FLAC seek table, while in WAV it came where expected; Chrome was exact (±0.02 s) on
 both. Calls stay FLAC on disk, and the player gets a WAV copy decoded when the call is opened
 (0.6 s per hour), of which only the last three are kept
-([0032](docs/decisions/0032-play-wav-copies-of-flac-calls.md),
-[report](results/2026-10-16-flac-seeking.md)).
+([report](results/2026-10-16-flac-seeking.md)).
 
 ## Imported files
 
 An audio or video file dropped into the app goes through the same pipeline as a recording:
 conversion to 16 kHz mono, VAD, turbo, Parakeet for the doubtful words, segment merging and the
 title, after the language question above. Every voice is on one track (channel `mixed`), so
-there is no "Io / Altri" split and no echo removal; the voices are told apart as in "Who speaks"
-([0021](docs/decisions/0021-import-audio-and-video-files.md)).
+there is no "Io / Altri" split and no echo removal; the voices are told apart as in "Who speaks".
 
 ## Derived layers
 
 - **Clean version:** only removes material (fillers, repetitions, false starts) by explicit rules,
-  never rewrites. A trained classifier is paused
-  ([0012](docs/decisions/0012-clean-layer-by-labeling.md)).
+  never rewrites. A trained classifier is paused.
 - **Title:** see the next section.
 
 ## Titles from key phrases
 
 A call gets a suggested title from its own words, without a language model: a RAKE-style
-extraction (Rose et al., 2010) with TF-IDF against the language
-([0020](docs/decisions/0020-title-from-key-phrases.md),
-[0022](docs/decisions/0022-titles-read-like-titles.md),
-[0023](docs/decisions/0023-title-rules-that-generalize.md)). Every rule is general: lists of
+extraction (Rose et al., 2010) with TF-IDF against the language. Every rule is general: lists of
 closed classes and frequency thresholds, nothing tuned on a particular call. The parameters were
 chosen by hand and are declared here; none was tuned on the six transcripts used to check them.
 
@@ -374,7 +357,7 @@ CC BY-SA 4.0).
 | CrisperWhisper 2.0 (optional, evaluation only) | comparison | non-commercial | not bundled |
 
 The models are downloaded once, when the person agrees in the app; the two voice models are
-checked by SHA-256 ([0029](docs/decisions/0029-install-from-the-repo-folder.md)).
+checked by SHA-256.
 
 ## Reproducing the numbers
 
@@ -385,41 +368,3 @@ uv run --group baselines parola eval --systems crisper-turbo-lang
 ```
 
 Reports are written to `results/` with the commit they were produced from.
-
-## All decisions
-
-| # | Decision |
-|---|---|
-| [0001](docs/decisions/0001-python-3.12.md) | Python 3.12 |
-| [0002](docs/decisions/0002-phase0-pipeline.md) | Phase 0 pipeline |
-| [0003](docs/decisions/0003-schema-and-annotation-format.md) | Transcript schema and annotation format |
-| [0004](docs/decisions/0004-training-corpora-licenses.md) | Training corpora and their licences |
-| [0005](docs/decisions/0005-silver-references.md) | Silver references |
-| [0006](docs/decisions/0006-english-only-training-first.md) | English-only fine-tuning first |
-| [0007](docs/decisions/0007-literal-fidelity-first.md) | Literal fidelity first |
-| [0008](docs/decisions/0008-evaluation-design.md) | Evaluation design |
-| [0009](docs/decisions/0009-two-models-and-crisperwhisper-license.md) | Two models and the CrisperWhisper licence |
-| [0010](docs/decisions/0010-fidelity-metric.md) | Fidelity as the primary metric |
-| [0011](docs/decisions/0011-default-engine-turbo.md) | Turbo as the default engine |
-| [0012](docs/decisions/0012-clean-layer-by-labeling.md) | Clean layer by labelling, classifier paused |
-| [0013](docs/decisions/0013-capture-with-core-audio-taps.md) | Capture with Core Audio taps |
-| [0014](docs/decisions/0014-doubtful-words.md) | Doubtful words |
-| [0015](docs/decisions/0015-app-product-direction.md) | Product direction: flag, let the user correct, then organise |
-| [0016](docs/decisions/0016-app-layout-and-floating-recorder.md) | App layout and floating recorder |
-| [0017](docs/decisions/0017-delete-to-trash-folder.md) | Deleting a call: app trash with undo |
-| [0018](docs/decisions/0018-type-charter-and-sf.md) | Typography: Charter and SF |
-| [0019](docs/decisions/0019-rename-to-parola.md) | Rename to P.A.R.O.L.A. |
-| [0020](docs/decisions/0020-title-from-key-phrases.md) | Title from key phrases, without a language model |
-| [0021](docs/decisions/0021-import-audio-and-video-files.md) | Importing audio and video files |
-| [0022](docs/decisions/0022-titles-read-like-titles.md) | Titles that read like titles |
-| [0023](docs/decisions/0023-title-rules-that-generalize.md) | Title rules that generalize |
-| [0024](docs/decisions/0024-lossless-audio-after-transcription.md) | Lossless audio after transcription |
-| [0025](docs/decisions/0025-glossary-learned-from-corrections.md) | Glossary learned from corrections: suggests, never corrects |
-| [0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md) | Who speaks: sherpa-onnx with our own grouping, fixable by hand |
-| [0027](docs/decisions/0027-release-speech-models-after-use.md) | Release the speech models after use |
-| [0028](docs/decisions/0028-native-mac-app-shell.md) | Native app: a Swift shell around the Python engine |
-| [0029](docs/decisions/0029-install-from-the-repo-folder.md) | Install from the repository folder; models asked on first start |
-| [0030](docs/decisions/0030-language-from-windows-and-asked-on-import.md) | Language: asked on import, detected on 5 windows |
-| [0031](docs/decisions/0031-provisional-text-after-whisper.md) | Provisional text once Whisper is done |
-| [0032](docs/decisions/0032-play-wav-copies-of-flac-calls.md) | The player gets WAV, calls stay FLAC |
-| [0033](docs/decisions/0033-text-grows-while-whisper-works.md) | The text grows while Whisper works |

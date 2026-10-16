@@ -3,7 +3,7 @@
 **Question.** If we also transcribe every call with a second system and flag the Whisper turbo words that the second does not confirm, how many of turbo's errors do we catch, and how much has to be checked again?
 
 **Method** (`ilat.doubt`).
-- Turbo, the default engine, and the second transcript are aligned on fidelity tokens, that is without fillers and repetitions ([0010](../docs/decisions/0010-fidelity-metric.md)). A turbo word is flagged if the second transcript replaces it or does not have it, or if the second has extra words right next to it.
+- Turbo, the default engine, and the second transcript are aligned on fidelity tokens, that is without fillers and repetitions. A turbo word is flagged if the second transcript replaces it or does not have it, or if the second has extra words right next to it.
 - Turbo's errors are computed the same way against the `adjudicated` references of it-002 and en-002: 374 words with an error out of 5761, that is **6.5%**. Flagging words at random, the precision would be exactly 6.5%.
 - Window 1 = one word before and one after are flagged too, as a highlight in the interface would do.
 

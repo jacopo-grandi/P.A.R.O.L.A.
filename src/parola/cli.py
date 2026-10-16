@@ -44,7 +44,7 @@ ENGINES = ("turbo", "crisper")
 CRISPER_NOTICE = (
     "CrisperWhisper 2.0 weights and outputs are licensed for non-commercial use only "
     "(nyra health Non-Commercial Research License): do not use it for commercial purposes. "
-    "See docs/decisions/0009-two-models-and-crisperwhisper-license.md."
+    "See METHODOLOGY.md (Models)."
 )
 
 

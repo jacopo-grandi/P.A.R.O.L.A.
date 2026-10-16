@@ -39,6 +39,6 @@ The full operational plan is in `docs/PLAN.md` (local, not in git). Read it befo
 - Ask before adding heavy dependencies (e.g. torch in the inference environment).
 - The skills in `.claude/skills/` are third-party: before running a script provided by a skill, show what it does and ask.
 - Everything is written **in English**: code, comments, docstrings, README, commit messages, and the documents in `docs/` and `results/`. Only the app's interface text is in Italian.
-- Every non-obvious design choice must be recorded in `docs/decisions/` (one short file per decision: context, choice, rejected alternatives).
+- Every non-obvious design choice must be recorded in `docs/decisions/` (local, not in git; one short file per decision: context, choice, rejected alternatives). What public readers need from a decision goes in `METHODOLOGY.md`.
 - Metrics have unit tests with hand-built cases: they must be right before the numbers can be trusted.
 - Small, descriptive commits; update the status in `docs/PLAN.md` at the end of each phase.

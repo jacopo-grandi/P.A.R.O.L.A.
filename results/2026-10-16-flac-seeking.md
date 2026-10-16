@@ -13,6 +13,6 @@
 | WebKit | FLAC | 5 + 6 + 8 | beep almost never heard within 8 s; once 23 s later, once almost right (−0.9 s) |
 | WebKit | FLAC with SEEKTABLE (360 points, one every 10 s, identical samples) | 6 | as without: beep never heard |
 
-**Decision.** Decision [0032](../docs/decisions/0032-play-wav-copies-of-flac-calls.md): calls stay FLAC on disk, and the player gets a WAV copy decoded when the call is opened. On en-001: 0.6 s the first time, then immediate.
+**Decision.** Calls stay FLAC on disk, and the player gets a WAV copy decoded when the call is opened. On en-001: 0.6 s the first time, then immediate.
 
 **Limits.** The WebKit test measures with Web Audio inside the page, which adds a variable delay at start; this is why the WAV is "where expected" and not "exact to the hundredth". The whole chain (server → WAV → WebKit) was not measured with the beep; its pieces were.
