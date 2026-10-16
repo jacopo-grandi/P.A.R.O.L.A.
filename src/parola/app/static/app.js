@@ -1051,17 +1051,61 @@ document.body.append($file);
 let uploading = null;   // {name, pct} while a file is being sent
 let imported = null;    // name of the call being imported from this window
 
-function importFile(file) {
-  // The raw file goes in the request body (no form encoding); progress from XHR.
+// A file's language is asked before it is sent: Whisper transcribes the whole file in one
+// language, and a wrong guess turns English into an Italian translation (decision 0030).
+const IMPORT_LANGS = [["it", "Italiano"], ["en", "English"], ["", "Rileva"]];
+let importLang = null;   // the last choice, offered first next time
+try { importLang = localStorage.getItem("importLang"); } catch (e) { /* none yet */ }
+
+function askLanguage(file) {
+  return new Promise(resolve => {
+    const box = el("div", { class: "modal", role: "dialog", "aria-modal": "true",
+                            "aria-labelledby": "lang-title" });
+    const done = lang => {
+      box.remove();
+      document.removeEventListener("keydown", onKey, true);
+      resolve(lang);
+    };
+    const onKey = e => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(null); }
+    };
+    const buttons = IMPORT_LANGS.map(([value, label]) =>
+      el("button", { class: value === importLang ? "primary" : null, onclick: () => done(value) },
+         label));
+    box.append(el("div", { class: "modal-card" },
+      el("h2", { id: "lang-title" }, "In che lingua è?"),
+      el("p", { class: "modal-file" }, file.name),
+      el("p", {}, "La trascrizione segue una lingua per tutto il file. Se non sei sicuro, " +
+                  "Rileva ascolta alcuni punti del file e sceglie tra italiano e inglese."),
+      el("div", { class: "modal-actions" },
+        el("button", { class: "cancel", onclick: () => done(null) }, "Annulla"), ...buttons)));
+    box.addEventListener("click", e => { if (e.target === box) done(null); });
+    document.addEventListener("keydown", onKey, true);
+    document.body.append(box);
+    (buttons.find(b => b.classList.contains("primary")) || buttons[0]).focus();
+  });
+}
+
+async function importFile(file) {
   if (!modelsReady()) return;
   if (["recording", "transcribing"].includes(recState.state) || uploading) {
     toast("Aspetta che finisca la registrazione o la trascrizione in corso.");
     return;
   }
+  const lang = await askLanguage(file);
+  $file.value = "";
+  if (lang === null) return;
+  importLang = lang;
+  try { localStorage.setItem("importLang", lang); } catch (e) { /* not remembered */ }
+  sendFile(file, lang);
+}
+
+function sendFile(file, lang) {
+  // The raw file goes in the request body (no form encoding); progress from XHR.
   uploading = { name: file.name.replace(/\.[^.]+$/, ""), pct: 0 };
   renderRecorder();
   const params = new URLSearchParams({ filename: file.name, modified: String(file.lastModified) });
-  if (recLang) params.set("lang", recLang);
+  if (lang) params.set("lang", lang);
   const xhr = new XMLHttpRequest();
   xhr.open("POST", `/api/import?${params}`);
   xhr.upload.onprogress = e => {
@@ -1071,7 +1115,6 @@ function importFile(file) {
   };
   xhr.onload = () => {
     uploading = null;
-    $file.value = "";
     let data = {};
     try { data = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
     recMode = null;
@@ -1172,7 +1215,7 @@ const MODELS = [
 let models = { state: "ready" };
 let setupLater = false;   // "Più tardi": the calls already here can still be read
 let setupTimer = null;
-const $setup = el("div", { class: "setup", hidden: true, role: "dialog", "aria-modal": "true",
+const $setup = el("div", { class: "modal", hidden: true, role: "dialog", "aria-modal": "true",
                            "aria-labelledby": "setup-title" });
 document.body.append($setup);
 
@@ -1192,7 +1235,7 @@ function renderSetup() {
   const st = models.state;
   $setup.hidden = st === "ready" || (setupLater && st !== "downloading");
   if ($setup.hidden) return;
-  const card = el("div", { class: "setup-card" },
+  const card = el("div", { class: "modal-card" },
     el("h2", { id: "setup-title" }, "Prima di iniziare"),
     el("p", {}, "P.A.R.O.L.A. trascrive tutto su questo Mac. Per farlo le servono i modelli di " +
                 `riconoscimento vocale: circa ${gigabytes(models.total)}, da scaricare una volta ` +
@@ -1213,7 +1256,7 @@ function renderSetup() {
                                             "riprova. Quello già scaricato resta."),
                   el("p", { class: "setup-detail" }, models.message));
     }
-    card.append(el("div", { class: "setup-actions" },
+    card.append(el("div", { class: "modal-actions" },
       el("button", { onclick: () => { setupLater = true; renderSetup(); } }, "Più tardi"),
       el("button", { class: "primary", onclick: startDownload },
          st === "error" ? "Riprova" : "Scarica i modelli")));

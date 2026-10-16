@@ -326,19 +326,19 @@ body.pip .rec-live.pip-bar { height: 100vh; border: 0; border-radius: 0; padding
   .clock { min-width: 0; }
 }
 
-/* ------------------------------------------------------------------ first run: the models */
+/* ------------------------------------------------------------------ dialogs: models, language */
 
-.setup {
+.modal {
   position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px;
   background: rgba(0, 0, 0, 0.78);
 }
-.setup[hidden] { display: none; }
-.setup-card {
+.modal[hidden] { display: none; }
+.modal-card {
   width: min(460px, 100%); padding: 24px; border-radius: 12px; background: var(--side);
   border: 1px solid var(--line); display: grid; gap: 14px;
 }
-.setup-card h2 { margin: 0; font-size: var(--text-title); font-weight: 600; }
-.setup-card p { margin: 0; font-size: var(--text-small); color: var(--fg-2); line-height: 1.5; }
+.modal-card h2 { margin: 0; font-size: var(--text-title); font-weight: 600; }
+.modal-card p { margin: 0; font-size: var(--text-small); color: var(--fg-2); line-height: 1.5; }
 .setup-models { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .setup-models li { display: flex; justify-content: space-between; gap: 12px;
                    font-size: var(--text-small); }
@@ -349,11 +349,14 @@ body.pip .rec-live.pip-bar { height: 100vh; border: 0; border-radius: 0; padding
                transition: width 0.4s; }
 .setup-progress { font-size: var(--text-caption); color: var(--fg-2);
                   font-variant-numeric: tabular-nums; }
-.setup-card .err { color: var(--rec); }
-.setup-card .setup-detail { font-size: var(--text-caption); color: var(--fg-3); }
-.setup-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.setup-actions button { padding: 7px 14px; border-radius: var(--radius); font-size: var(--text-small);
+.modal-card .err { color: var(--rec); }
+.modal-card .setup-detail { font-size: var(--text-caption); color: var(--fg-3); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-actions button { padding: 7px 14px; border-radius: var(--radius); font-size: var(--text-small);
                         background: var(--raise); color: var(--fg); }
-.setup-actions button:hover { background: var(--hover); }
-.setup-actions .primary { background: var(--accent); color: #fff; }
-.setup-actions .primary:hover { background: var(--accent); filter: brightness(1.1); }
+.modal-actions button:hover { background: var(--hover); }
+.modal-actions .primary { background: var(--accent); color: #fff; }
+.modal-actions .primary:hover { background: var(--accent); filter: brightness(1.1); }
+.modal-file { font-size: var(--text-small); color: var(--fg); overflow-wrap: anywhere; }
+.modal-actions .cancel { margin-right: auto; background: none; color: var(--fg-2); padding-left: 0; }
+.modal-actions .cancel:hover { background: none; color: var(--fg); }

@@ -96,8 +96,9 @@ recording and transcribes it in the background. Run `parola serve` from the same
 the audio permissions to (e.g. Terminal).
 
 To transcribe an audio or video file recorded elsewhere, use the upload button next to
-**Registra** or drop the file on the window. It goes through the same transcription and doubtful
-words, on a single track: every voice is on it, so there is no "Io / Altri" split.
+**Registra** or drop the file on the window. It asks the file's language first (Italiano,
+English, or Rileva to detect it; the last choice is offered first). It goes through the same
+transcription and doubtful words, on a single track: every voice is on it, so there is no "Io / Altri" split.
 While a file or a recording is being transcribed it shows at the top of the list, with its
 progress.
 
