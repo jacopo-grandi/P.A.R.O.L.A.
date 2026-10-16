@@ -44,6 +44,7 @@ def test_index_and_static(client):
 def test_list_recordings(client):
     [rec] = client.get("/api/recordings").json()
     assert rec["name"] == "call" and rec["doubtful"] == 1 and rec["words"] == 4
+    assert rec["to_review"] == 1
     assert rec["channels"] == ["mic", "system"] and rec["started_at"] == "2026-10-16T09:00:00Z"
 
 
@@ -124,3 +125,12 @@ def test_rename(client):
         client.post("/api/recordings/call/rename", json={"title": ""}).json()["summary"]["title"]
         == "call"
     )
+
+
+def test_exports_are_named_after_the_title(client):
+    client.post("/api/recordings/call/rename", json={"title": "Riunione: LED/Q4"})
+    r = client.get("/export/call.md")
+    disposition = r.headers["content-disposition"]
+    assert 'filename="call.md"' in disposition
+    assert "filename*=UTF-8''Riunione%20LEDQ4.md" in disposition
+    assert r.text.startswith("# Riunione: LED/Q4")

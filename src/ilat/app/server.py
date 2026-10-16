@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
@@ -46,6 +47,7 @@ def summary(folder: Path, name: str) -> dict:
         "segments": len(t.segments),
         "words": len(words),
         "doubtful": sum(w.doubtful for w in words),
+        "to_review": len(editing.doubt_runs(t)),  # runs of doubtful words, as the UI counts them
         "checked": sum(w.checked for w in words),
         "edits": len(t.edits),
         "model": t.metadata.model,
@@ -115,10 +117,13 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         except SessionError as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
 
-    @app.post("/api/record/stop")
-    def record_stop() -> dict:
+    @app.post("/api/record/{action}")
+    def record_control(action: str) -> dict:
+        controls = {"stop": session.stop, "pause": session.pause, "resume": session.resume}
+        if action not in controls:
+            raise HTTPException(status_code=404, detail="no such action")
         try:
-            return session.stop()
+            return controls[action]()
         except SessionError as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
 
@@ -203,7 +208,11 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         if not path.exists() or fmt not in ("txt", "md", "json", "docx"):
             raise HTTPException(status_code=404, detail="no such export")
         t = Transcript.load(path)
-        headers = {"Content-Disposition": f'attachment; filename="{name}.{fmt}"'}
+        title = t.metadata.title or name
+        # The file is named after the title the user gave; plain name as the ASCII fallback.
+        stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", title).strip() or name
+        disposition = f"attachment; filename=\"{name}.{fmt}\"; filename*=UTF-8''{quote(stem)}.{fmt}"
+        headers = {"Content-Disposition": disposition}
         if fmt == "json":
             return PlainTextResponse(t.to_json(), media_type="application/json", headers=headers)
         if fmt == "docx":
@@ -212,13 +221,13 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
             from ilat.app.export import to_docx
 
             return Response(
-                to_docx(t, name),
+                to_docx(t, title),
                 headers=headers,
                 media_type=(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 ),
             )
-        text = to_dialogue(t) if fmt == "txt" else to_markdown(t, name)
+        text = to_dialogue(t) if fmt == "txt" else to_markdown(t, title)
         return PlainTextResponse(text, media_type="text/plain; charset=utf-8", headers=headers)
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

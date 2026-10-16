@@ -3,17 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <title>ilat</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="top">
-    <a href="#/" class="brand">ilat</a>
-    <span class="subtitle">trascrizioni locali</span>
-    <div id="recbar" class="recbar"></div>
-  </header>
-  <main id="main"></main>
-  <div id="audio"></div>
+  <aside class="sidebar">
+    <div class="side-top">
+      <a href="#/" class="brand">ilat</a>
+    </div>
+    <div id="recorder" class="recorder"></div>
+    <div class="search"><input id="search" type="search" placeholder="Cerca" autocomplete="off"></div>
+    <nav id="calls" class="calls" aria-label="Registrazioni"></nav>
+  </aside>
+  <main id="main" class="main"></main>
+  <div id="audio" hidden></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

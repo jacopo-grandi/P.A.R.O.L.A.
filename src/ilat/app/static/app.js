@@ -1,32 +1,76 @@
-// ilat local UI: list of recordings, transcript with doubtful words, click a word to listen.
+// ilat local UI: calls in the sidebar, the transcript in the middle, doubtful words to review.
 "use strict";
 
 const LABELS = { mic: "Io", system: "Altri" };
-const LEAD = 0.25; // start playing a little before the word
-const main = document.getElementById("main");
-const audioBox = document.getElementById("audio");
-let players = {};   // channel -> <audio>
-let words = [];     // flat list of {el, channel, start, end, doubtful}
-let current = null; // word element being played
-let target = null;  // word chosen by click or N/P, until playback reaches it
+const LEAD = 0.25;         // start playing a little before the word
+const EXCERPT_TAIL = 1.0;  // a doubtful run plays until this long after its last word
+const LANGS = [["", "Auto"], ["it", "IT"], ["en", "EN"]];
+
+const $main = document.getElementById("main");
+const $calls = document.getElementById("calls");
+const $search = document.getElementById("search");
+const $recorder = document.getElementById("recorder");
+const $audio = document.getElementById("audio");
+
+// ---------------------------------------------------------------- helpers
 
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === false || v === null || v === undefined) continue;
     if (k === "class") e.className = v;
     else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-    else e.setAttribute(k, v);
+    else e.setAttribute(k, v === true ? "" : v);
   }
-  for (const c of children) e.append(c);
+  for (const c of children) if (c !== null && c !== undefined && c !== false) e.append(c);
   return e;
 }
 
+// 24px line icons, drawn here so nothing is fetched.
+const ICONS = {
+  play: '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>',
+  pause: '<rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor"/>' +
+         '<rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>',
+  popout: '<path d="M14 4h6v6M20 4l-8 8M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5' +
+          'v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
+  prev: '<path d="M15 6l-6 6 6 6"/>',
+  next: '<path d="M9 6l6 6-6 6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  more: '<circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>' +
+        '<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>' +
+        '<circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+  filter: '<path d="M4 7h16M7 12h10M10 17h4"/>',
+};
+
+function icon(name, size = 16) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("width", size);
+  s.setAttribute("height", size);
+  s.setAttribute("aria-hidden", "true");
+  s.setAttribute("fill", "none");
+  s.setAttribute("stroke", "currentColor");
+  s.setAttribute("stroke-width", "1.8");
+  s.setAttribute("stroke-linecap", "round");
+  s.setAttribute("stroke-linejoin", "round");
+  s.innerHTML = ICONS[name];
+  return s;
+}
+
+function iconButton(name, label, onclick, cls = "") {
+  return el("button", { class: `icon-btn ${cls}`, title: label, "aria-label": label, onclick },
+    icon(name));
+}
+
 function clock(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
+  const s = Math.max(0, Math.floor(seconds || 0));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   const mm = String(m).padStart(2, "0"), ss = String(r).padStart(2, "0");
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+
+const enc = encodeURIComponent;
 
 async function getJSON(url) {
   const r = await fetch(url);
@@ -34,44 +78,139 @@ async function getJSON(url) {
   return r.json();
 }
 
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                               body: JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || `${r.status}`);
+  return data;
+}
+
+let toastTimer = null;
+function toast(message) {
+  let t = document.querySelector(".toast");
+  if (!t) document.body.append(t = el("div", { class: "toast", role: "status" }));
+  t.textContent = message;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+// ---------------------------------------------------------------- sidebar
+
+let calls = [];   // summaries from /api/recordings, newest first
+
+function dayOf(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+function groupOf(date) {
+  const days = Math.round((dayOf(new Date()) - dayOf(date)) / 86400000);
+  if (days <= 0) return "Oggi";
+  if (days === 1) return "Ieri";
+  if (days < 7) return "Ultimi 7 giorni";
+  if (days < 30) return "Ultimi 30 giorni";
+  return date.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+}
+
+function shortWhen(date) {
+  const days = Math.round((dayOf(new Date()) - dayOf(date)) / 86400000);
+  return days < 2 ? date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
+                  : date.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+}
+
+function minutes(seconds) {
+  const m = Math.round((seconds || 0) / 60);
+  return m < 1 ? "< 1 min" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+async function refreshCalls() {
+  calls = await getJSON("/api/recordings");
+  renderCalls();
+}
+
+function renderCalls() {
+  const q = $search.value.trim().toLowerCase();
+  const shown = calls.filter(c => !q || c.title.toLowerCase().includes(q) ||
+                                  c.name.toLowerCase().includes(q));
+  const items = [];
+  let group = null;
+  for (const c of shown) {
+    const date = new Date(c.started_at);
+    const g = groupOf(date);
+    if (g !== group) items.push(el("div", { class: "group" }, group = g));
+    const title = el("span", { class: "title" }, c.title);
+    const sub = el("span", { class: "sub" }, `${shortWhen(date)} · ${minutes(c.duration)}`,
+      c.to_review ? el("span", { class: "n" }, ` · ${c.to_review} da rivedere`) : null);
+    const a = el("a", { class: "call" + (c.name === recName ? " active" : ""),
+                        href: `#/rec/${enc(c.name)}`, title: "Doppio clic per rinominare" },
+      title, sub);
+    a.addEventListener("dblclick", e => { e.preventDefault(); renameInPlace(title, c); });
+    items.push(a);
+  }
+  if (!items.length) {
+    items.push(el("p", { class: "empty-list" }, q ? "Nessun risultato." : "Ancora nessuna call."));
+  }
+  $calls.replaceChildren(...items);
+}
+
+function renameInPlace(host, call) {
+  const before = call.title;
+  const input = el("input", { class: "inline", value: before, maxlength: "120",
+                              "aria-label": "Nome della call" });
+  host.replaceChildren(input);
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async save => {
+    if (finished) return;
+    finished = true;
+    const title = input.value.trim();
+    if (save && title && title !== before) {
+      try {
+        await postJSON(`/api/recordings/${enc(call.name)}/rename`, { title });
+        if (rec && call.name === recName) rec.summary.title = title;
+      } catch (e) { toast(`Non rinominata: ${e.message}`); }
+    }
+    await refreshCalls();
+    if (rec && call.name === recName) renderHeading();
+  };
+  input.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
+  input.addEventListener("blur", () => finish(true));
+}
+
+$search.addEventListener("input", renderCalls);
+
+// ---------------------------------------------------------------- transcript
+
+let rec = null;      // recording being shown
+let recName = null;
+let players = {};    // channel -> <audio>
+let words = [];      // flat list of {el, channel, start, end, doubtful, seg, k}
+let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
+let current = null;  // word element being played
+let target = null;   // word chosen by click or N/P, until playback reaches it
+let editing = null;  // {seg, start, end}
+let stopAt = null;   // {channel, t}: stop playback there (excerpt of a doubtful run)
+let lastChannel = null;
+let onlyDoubts = false;
+let view = {};       // elements of the call view that are updated in place
+
 function stopAll() {
   for (const p of Object.values(players)) p.pause();
 }
 
-// ---------------------------------------------------------------- list
-
-async function showList() {
-  stopAll();
-  audioBox.replaceChildren();
-  players = {};
-  const recs = await getJSON("/api/recordings");
-  if (!recs.length) {
-    main.replaceChildren(el("p", { class: "empty" },
-      "Nessuna registrazione. Registra una call con ", el("code", {}, "uv run ilat record"), "."));
-    return;
-  }
-  const list = el("div", { class: "list" });
-  for (const r of recs) {
-    const when = new Date(r.started_at).toLocaleString("it-IT");
-    const who = r.channels.map(c => LABELS[c] || c).join(" + ");
-    const meta = `${when} · ${clock(r.duration)} · ${who} · ${r.words} parole`;
-    list.append(el("a", { class: "rec", href: `#/rec/${encodeURIComponent(r.name)}` },
-      el("div", { class: "name" }, r.name, " ",
-        r.doubtful ? el("span", { class: "badge" }, `${r.doubtful} dubbie`) : ""),
-      el("div", { class: "meta" }, meta)));
-  }
-  main.replaceChildren(list);
+function playing() {
+  return Object.values(players).find(p => !p.paused) || null;
 }
 
-// ---------------------------------------------------------------- recording
-
-let rec = null;      // recording being shown
-let recName = null;
-let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
-let editing = null;  // {seg, start, end}
-
-let stopAt = null; // {channel, t}: stop playback there (excerpt of a doubtful run)
-const EXCERPT_TAIL = 1.0;
+function duration() {
+  const segs = rec ? rec.segments : [];
+  return (rec && rec.summary.duration) || (segs.length ? segs[segs.length - 1].end : 0);
+}
 
 function play(word, until) {
   const p = players[word.channel];
@@ -79,26 +218,26 @@ function play(word, until) {
   for (const [c, q] of Object.entries(players)) if (c !== word.channel) q.pause();
   p.currentTime = Math.max(0, word.start - LEAD);
   stopAt = until === undefined ? null : { channel: word.channel, t: until };
+  lastChannel = word.channel;
   p.play().catch(() => {});
   target = word;
   mark(word.el);
-}
-
-function playing() {
-  return Object.values(players).find(p => !p.paused) || null;
 }
 
 function togglePlay() {
   const p = playing();
   if (p) { p.pause(); return; }
   const w = current && words.find(w => w.el === current);
-  const q = players[w ? w.channel : Object.keys(players)[0]];
-  if (q) { stopAt = null; q.play().catch(() => {}); }
+  const channel = w ? w.channel : lastChannel || Object.keys(players)[0];
+  const q = players[channel];
+  if (q) { stopAt = null; lastChannel = channel; q.play().catch(() => {}); }
 }
 
-function updatePlayButton() {
-  const b = document.getElementById("playbtn");
-  if (b) b.textContent = playing() ? "❚❚ pausa" : "▶︎ riprendi";
+function seek(seconds) {
+  // Jump to the word being said at that time (on any channel), or just there.
+  const before = words.filter(w => w.start <= seconds);
+  const w = before.length ? before.reduce((a, b) => (b.start > a.start ? b : a)) : words[0];
+  if (w) play(w);
 }
 
 function mark(e) {
@@ -108,12 +247,13 @@ function mark(e) {
 }
 
 function follow(channel) {
-  // Highlight the word being played on this channel.
-  const t = players[channel].currentTime;
+  const p = players[channel];
+  const t = p.currentTime;
   if (stopAt && stopAt.channel === channel && t >= stopAt.t) {
-    players[channel].pause();
+    p.pause();
     stopAt = null;
   }
+  if (channel === lastChannel) updateProgress(t);
   // Playback starts LEAD seconds early: keep the chosen word highlighted until it is reached.
   if (target && target.channel === channel && t < target.start) return;
   target = null;
@@ -121,13 +261,23 @@ function follow(channel) {
   if (w && w.el !== current) mark(w.el);
 }
 
+function updateProgress(t) {
+  if (!view.done) return;
+  const total = duration();
+  view.done.style.width = total ? `${Math.min(100, (t / total) * 100)}%` : "0";
+  view.clock.textContent = `${clock(t)} / ${clock(total)}`;
+}
+
+function updatePlayButton() {
+  if (!view.play) return;
+  const on = !!playing();
+  view.play.replaceChildren(icon(on ? "pause" : "play", 14));
+  view.play.setAttribute("aria-label", on ? "Pausa" : "Riproduci");
+  view.play.title = on ? "Pausa (spazio)" : "Riproduci (spazio)";
+}
+
 async function post(action, body) {
-  const r = await fetch(`/api/recordings/${encodeURIComponent(recName)}/${action}`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  if (!r.ok) throw new Error((await r.json()).detail || r.status);
-  return r.json();
+  return postJSON(`/api/recordings/${enc(recName)}/${action}`, body);
 }
 
 function wordAt(seg, k) {
@@ -140,8 +290,9 @@ function openEditor(seg, start, end, autoplay) {
   if (!first) return;
   editing = { seg, start, end };
   const text = rec.segments[seg].words.slice(start, end).map(w => w.text).join(" ");
-  const input = el("input", { class: "edit", value: text, size: Math.max(8, text.length + 2),
-                              title: "Invio: salva (senza modifiche: conferma) · Esc: annulla" });
+  const input = el("input", { class: "edit", value: text, size: Math.max(6, text.length + 2),
+                              "aria-label": "Correggi",
+                              title: "Invio: salva (senza modifiche conferma) · Esc: chiudi" });
   first.el.before(input);
   for (let k = start; k < end; k++) wordAt(seg, k).el.classList.add("editing");
   input.addEventListener("keydown", async e => {
@@ -150,11 +301,12 @@ function openEditor(seg, start, end, autoplay) {
       const p = playing();
       if (p) p.pause();
       closeEditor();
-    }
-    else if (e.key === "Enter") {
+    } else if (e.key === "Enter") {
       e.preventDefault();
-      const after = await post("correct", { segment: seg, start, end, text: input.value });
-      await render(after, { seg, start, auto: true });
+      try {
+        await render(await post("correct", { segment: seg, start, end, text: input.value }),
+                     { seg, start, auto: true });
+      } catch (err) { toast(err.message); }
     } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); playRun(seg, start, end); }
   });
   input.focus();
@@ -188,12 +340,64 @@ function jump(direction) {
   if (r) openEditor(r.seg, r.start, r.end, true);
 }
 
+async function undo() {
+  try { await render(await post("undo"), {}); } catch (e) { toast("Niente da annullare."); }
+}
+
+function renderHeading() {
+  const s = rec.summary;
+  const h1 = el("h1", { title: "Doppio clic per rinominare" }, s.title);
+  h1.addEventListener("dblclick", () => renameInPlace(h1, s));
+  const when = new Date(s.started_at).toLocaleString("it-IT",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit",
+      minute: "2-digit" });
+  const who = s.channels.map(c => LABELS[c] || c).join(" e ");
+  const meta = `${when} · ${clock(s.duration)} · ${s.words.toLocaleString("it-IT")} parole` +
+               (who ? ` · ${who}` : "");
+  view.heading.replaceChildren(h1, el("div", { class: "meta" }, meta));
+}
+
+function exportMenu(anchor) {
+  const close = () => { menu.remove(); document.removeEventListener("click", outside, true); };
+  const outside = e => { if (!menu.contains(e.target)) close(); };
+  const link = (f, label) => el("a", { href: `/export/${enc(recName)}.${f}`, onclick: close }, label);
+  const menu = el("div", { class: "menu", role: "menu" },
+    link("txt", "Testo (.txt)"), link("md", "Markdown (.md)"), link("docx", "Word (.docx)"),
+    link("json", "Dati (.json)"), el("hr"),
+    el("button", { onclick: () => { close(); window.print(); } }, "Stampa o salva PDF"));
+  anchor.append(menu);
+  setTimeout(() => document.addEventListener("click", outside, true));
+}
+
+function relabel() {
+  // The speaker is written only when it changes, counting only the visible lines.
+  let prev = null;
+  for (const turn of view.body.querySelectorAll(".turn")) {
+    if (turn.classList.contains("hidden")) continue;
+    const who = turn.querySelector(".who");
+    who.hidden = turn.dataset.channel === prev;
+    prev = turn.dataset.channel;
+  }
+}
+
+function applyFilter() {
+  for (const turn of view.body.querySelectorAll(".turn")) {
+    turn.classList.toggle("hidden", onlyDoubts && turn.dataset.doubt !== "true");
+  }
+  view.filter.classList.toggle("on", onlyDoubts);
+  view.filter.setAttribute("aria-pressed", onlyDoubts);
+  relabel();
+}
+
 async function render(data, after) {
+  const scrollY = view.scroll ? view.scroll.scrollTop : 0;
   rec = data;
   words = [];
   runs = [];
   current = null;
   editing = null;
+  view = {};
+
   const body = el("div", { class: "transcript" });
   rec.segments.forEach((seg, si) => {
     const channel = seg.channel || "mic";
@@ -201,10 +405,8 @@ async function render(data, after) {
     const list = seg.words.length ? seg.words : [{ text: seg.text, start: seg.start, end: seg.end }];
     list.forEach((w, k) => {
       const start = w.start ?? seg.start, end = w.end ?? seg.end;
-      const cls = "w" + (w.doubtful ? " doubt" : "") + (w.checked ? " checked" : "");
-      const span = el("span", { class: cls }, w.text);
-      if (w.doubtful) span.title = "parola dubbia: la seconda trascrizione dice altro (N per rivederla)";
-      else if (w.checked) span.title = "verificata da te";
+      const span = el("span", { class: "w" + (w.doubtful ? " doubt" : "") }, w.text);
+      if (w.doubtful) span.title = "Dubbia: la seconda trascrizione dice altro";
       const word = { el: span, channel, start, end, doubtful: !!w.doubtful, seg: si, k };
       span.addEventListener("click", () => play(word));
       span.addEventListener("dblclick", e => {
@@ -222,149 +424,263 @@ async function render(data, after) {
       }
     });
     const first = words[words.length - list.length];
-    body.append(el("div", { class: `seg ${channel}`, "data-doubt": seg.words.some(w => w.doubtful) },
-      el("span", { class: "time", onclick: () => play(first) }, clock(seg.start)),
-      el("span", { class: "who" }, LABELS[channel] || channel),
+    body.append(el("div", { class: "turn", "data-channel": channel,
+                            "data-doubt": seg.words.some(w => w.doubtful) },
+      el("div", { class: `who ${channel}` }, LABELS[channel] || channel),
+      el("span", { class: "t", onclick: () => play(first) }, clock(seg.start)),
       text));
   });
-  const s = rec.summary;
-  const onlyDoubts = el("input", { type: "checkbox" });
-  onlyDoubts.addEventListener("change", () => {
-    for (const row of body.children) {
-      row.classList.toggle("hidden", onlyDoubts.checked && row.dataset.doubt !== "true");
-    }
+  if (runs.length) {
+    body.prepend(el("p", { class: "hint" },
+      "Clic su una parola per ascoltarla. ", el("kbd", {}, "N"), " passa alla prossima dubbia, ",
+      el("kbd", {}, "Invio"), " salva o conferma, ", el("kbd", {}, "Esc"), " chiude, ",
+      el("kbd", {}, "⌘Z"), " annulla."));
+  }
+
+  view.heading = el("div", { class: "heading" });
+  view.filter = iconButton("filter", "Solo le righe con parole dubbie",
+    () => { onlyDoubts = !onlyDoubts; applyFilter(); });
+  const more = iconButton("more", "Esporta", e => { e.stopPropagation(); exportMenu(actions); });
+  const undoBtn = iconButton("undo", "Annulla l'ultima modifica (⌘Z)", undo);
+  undoBtn.disabled = !rec.summary.edits;
+  const actions = el("div", { class: "actions" }, view.filter, undoBtn, more);
+  const head = el("header", { class: "call-head" }, view.heading, actions);
+
+  view.body = body;
+  view.scroll = el("div", { class: "scroll" }, body);
+
+  const total = duration();
+  view.play = el("button", { class: "play", onclick: togglePlay });
+  view.clock = el("span", { class: "clock" });
+  view.done = el("div", { class: "done" });
+  const timeline = el("div", { class: "timeline", title: "Vai a questo punto" },
+    el("div", { class: "track" }), view.done,
+    ...runs.map(r => {
+      const tick = el("i", { class: "tick" });
+      tick.style.left = `${total ? (r.t / total) * 100 : 0}%`;
+      return tick;
+    }));
+  timeline.addEventListener("click", e => {
+    const box = timeline.getBoundingClientRect();
+    seek(((e.clientX - box.left) / box.width) * total);
   });
-  const exp = f => el("a", { class: "btn", href: `/export/${encodeURIComponent(recName)}.${f}` }, f);
-  const bar = el("div", { class: "bar" },
-    el("h1", {}, s.name),
-    el("button", { id: "playbtn", onclick: togglePlay }, "▶︎ riprendi"),
-    el("span", { class: "todo" }, runs.length ? `${runs.length} da rivedere` : "tutto rivisto ✓"),
-    el("button", { onclick: () => jump(-1) }, "← P"),
-    el("button", { onclick: () => jump(1) }, "N →"),
-    el("button", { onclick: async () => {
-      try { await render(await post("undo"), {}); } catch (e) { alert(e.message); }
-    } }, "annulla ⌘Z"),
-    el("label", { class: "toggle" }, onlyDoubts, " solo righe con dubbi"),
-    exp("txt"), exp("md"), exp("docx"), exp("json"),
-    el("button", { onclick: () => window.print() }, "PDF"),
-    el("a", { class: "btn", href: "#/" }, "elenco"));
-  const help = el("p", { class: "help" },
-    `${clock(s.duration)} · ${s.words} parole · ${s.doubtful} dubbie · ${s.checked} verificate. ` +
-    "Clic su una parola: ascolta da lì (spazio o Esc per fermare). N: prossima dubbia, si " +
-    "ascolta solo quel pezzetto e si apre in modifica; Invio salva (senza modifiche la " +
-    "conferma) e passa alla successiva, Esc chiude, Ctrl-spazio riascolta. Doppio clic: " +
-    "modifica qualsiasi parola. ⌘Z: annulla l'ultima modifica.");
-  const y = window.scrollY;
-  main.replaceChildren(bar, help, body);
+  const review = runs.length
+    ? el("div", { class: "review" }, iconButton("prev", "Dubbia precedente (P)", () => jump(-1)),
+         el("b", {}, String(runs.length)), "da rivedere",
+         iconButton("next", "Prossima dubbia (N)", () => jump(1)))
+    : el("div", { class: "review clear" }, el("b", {}, "✓"), "Tutto rivisto");
+  const player = el("footer", { class: "player" }, view.play, view.clock, timeline, review);
+
+  $main.replaceChildren(head, view.scroll, player);
+  renderHeading();
+  applyFilter();
   updatePlayButton();
+  const p = lastChannel && players[lastChannel];
+  updateProgress(p ? p.currentTime : 0);
+
   if (after && after.seg !== undefined) {
-    window.scrollTo(0, y);
+    view.scroll.scrollTop = scrollY;
     if (after.auto) {
       const w = wordAt(after.seg, Math.min(after.start, rec.segments[after.seg].words.length - 1));
-      const from = w ? w.start - 0.02 : undefined;
-      const r = nextRun(1, from);
+      const r = nextRun(1, w ? w.start - 0.02 : undefined);
       if (r) openEditor(r.seg, r.start, r.end, true);
     }
-  } else if (!after) window.scrollTo(0, 0);
+  } else if (after) view.scroll.scrollTop = scrollY;
+
+  // Counts in the sidebar follow the edits.
+  const item = calls.find(c => c.name === recName);
+  if (item && item.to_review !== rec.summary.to_review) {
+    item.to_review = rec.summary.to_review;
+    renderCalls();
+  }
 }
 
 async function showRecording(name) {
   stopAll();
   recName = name;
-  const data = await getJSON(`/api/recordings/${encodeURIComponent(name)}`);
+  renderCalls();
+  const data = await getJSON(`/api/recordings/${enc(name)}`);
   players = {};
-  audioBox.replaceChildren();
+  lastChannel = null;
+  $audio.replaceChildren();
   for (const [channel, url] of Object.entries(data.audio)) {
     const a = el("audio", { preload: "metadata", src: url });
     a.addEventListener("timeupdate", () => follow(channel));
     a.addEventListener("play", updatePlayButton);
     a.addEventListener("pause", updatePlayButton);
     players[channel] = a;
-    audioBox.append(a);
+    $audio.append(a);
   }
+  lastChannel = Object.keys(players)[0] || null;
+  view = {};
   await render(data);
 }
 
-// ---------------------------------------------------------------- recording from the app
-
-const recbar = document.getElementById("recbar");
-let recState = null;
-let recTimer = null;
-
-function meter(label, db) {
-  // -60 dBFS (empty) .. 0 dBFS (full)
-  const v = db === undefined ? 0 : Math.max(0, Math.min(1, (db + 60) / 60));
-  const bar = el("span", { class: "meter" }, el("span", { class: "fill" }));
-  bar.firstChild.style.width = `${Math.round(v * 100)}%`;
-  bar.classList.toggle("silent", db !== undefined && db <= -60);
-  return el("span", { class: "lvl" }, label, " ", bar);
+function showEmpty() {
+  stopAll();
+  players = {};
+  $audio.replaceChildren();
+  rec = recName = null;
+  view = {};
+  renderCalls();
+  $main.replaceChildren(el("div", { class: "placeholder" },
+    ...(calls.length
+      ? [el("h2", {}, "Scegli una call"), el("p", {}, "Oppure registrane una nuova.")]
+      : [el("h2", {}, "Nessuna call"),
+         el("p", {}, "Premi Registra: l'audio e la trascrizione restano su questo Mac.")])));
 }
 
-async function recPost(action, body) {
-  const r = await fetch(`/api/record/${action}`, { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.detail || r.status);
-  return data;
+// ---------------------------------------------------------------- recorder
+
+let recState = { state: "idle" };
+let recAt = 0;          // when recState arrived, to keep the clock running between polls
+let recLang = "";
+let recMode = null;     // what the recorder shows now, to rebuild only when it changes
+let liveViews = [];     // the recorder in the sidebar and, if open, in the floating window
+let pip = null;         // floating window (Document Picture-in-Picture)
+let pollTimer = null;
+const busy = {};       // progress elements while transcribing
+
+async function recAction(action, body) {
+  try {
+    setRecState(await postJSON(`/api/record/${action}`, body));
+    if (action === "start") openFloating(true);
+  } catch (e) { toast(e.message); }
 }
 
-function renderRecbar(st) {
-  const prev = recState;
-  recState = st;
-  if (st.state === "recording") {
-    const lv = st.levels || {};
-    recbar.replaceChildren(
-      el("span", { class: "dot" }), el("span", { class: "timer" }, clock(st.elapsed)),
-      "mic" in lv ? meter("Io", lv.mic) : "", "system" in lv ? meter("Altri", lv.system) : "",
-      el("button", { class: "stop", onclick: async () => {
-        try { renderRecbar(await recPost("stop")); pollRecording(); } catch (e) { alert(e.message); }
-      } }, "■ Ferma"));
-    return;
+function liveElapsed() {
+  const st = recState;
+  if (st.state !== "recording") return 0;
+  return st.elapsed + (st.paused ? 0 : (Date.now() - recAt) / 1000);
+}
+
+function meter() {
+  const fill = el("i");
+  return { root: el("div", { class: "meter" }, fill), fill };
+}
+
+function buildLive(floating) {
+  // The recording controls; built with this document but also moved into the floating window.
+  const dot = el("span", { class: "rec-dot" });
+  const time = el("span", { class: "rec-time" });
+  const mic = meter(), system = meter();
+  const meters = el("div", { class: "meters", title: "Livelli: Io, Altri" },
+    mic.root, system.root);
+  const pause = el("button", { class: "icon-btn" });
+  const stop = iconButton("stop", "Ferma e trascrivi", () => recAction("stop"), "rec-stop");
+  const pop = floating ? null : iconButton("popout", "Finestra mobile", () => openFloating(false));
+  const root = el("div", { class: floating ? "rec-live pip-bar" : "rec-live" },
+    dot, time, meters, pause, pop, stop);
+  return {
+    root,
+    update(st) {
+      dot.classList.toggle("blink", !st.paused);
+      dot.style.opacity = st.paused ? "0.35" : "";
+      time.textContent = clock(liveElapsed());
+      const lv = st.levels || {};
+      for (const [m, db] of [[mic, lv.mic], [system, lv.system]]) {
+        // -60 dBFS (empty) .. 0 dBFS (full)
+        const v = db === undefined ? 0 : Math.max(0, Math.min(1, (db + 60) / 60));
+        m.fill.style.width = `${Math.round(v * 100)}%`;
+      }
+      const label = st.paused ? "Riprendi" : "Pausa";
+      pause.replaceChildren(icon(st.paused ? "play" : "pause", 14));
+      pause.title = label;
+      pause.setAttribute("aria-label", label);
+      pause.onclick = () => recAction(st.paused ? "resume" : "pause");
+    },
+  };
+}
+
+function renderRecorder() {
+  const st = recState;
+  const mode = st.state === "recording" ? "recording"
+             : st.state === "transcribing" ? "transcribing" : `idle:${st.state}:${st.name}`;
+  if (mode !== recMode) {
+    recMode = mode;
+    liveViews = liveViews.filter(v => v.floating);
+    if (mode === "recording") {
+      const v = buildLive(false);
+      liveViews.push(v);
+      $recorder.replaceChildren(v.root);
+    } else if (mode === "transcribing") {
+      busy.bar = el("i");
+      busy.text = el("span");
+      $recorder.replaceChildren(el("div", { class: "rec-busy" }, busy.text,
+        el("div", { class: "bar" }, busy.bar)));
+      closeFloating();
+    } else {
+      closeFloating();
+      const lang = el("select", { class: "lang", title: "Lingua della call",
+                                  "aria-label": "Lingua della call",
+                                  onchange: e => { recLang = e.target.value; } },
+        ...LANGS.map(([v, label]) => el("option", { value: v, selected: v === recLang }, label)));
+      const start = el("button", { class: "rec-start",
+                                   onclick: () => recAction("start", { lang: recLang || null }) },
+        el("span", { class: "rec-dot" }), "Registra");
+      const note = st.state === "done" && st.name
+        ? el("p", { class: "rec-note" }, "Trascritta: ",
+             el("a", { href: `#/rec/${enc(st.name)}` }, "apri"))
+        : st.state === "error" ? el("p", { class: "rec-note err" }, st.message) : null;
+      $recorder.replaceChildren(el("div", { class: "rec-row" }, start, lang), note || "");
+    }
   }
-  if (st.state === "transcribing") {
+  if (mode === "recording") for (const v of liveViews) v.update(st);
+  if (mode === "transcribing") {
     const [done, total] = st.step || [0, 0];
     const pct = total ? Math.round((done / total) * 100) : 0;
-    recbar.replaceChildren(el("span", { class: "busy" },
-      `${st.message || "trascrizione"}… ${pct}%`));
+    busy.text.textContent = `Trascrizione… ${pct}%`;
+    busy.bar.style.width = `${pct}%`;
+  }
+}
+
+function setRecState(st) {
+  const prev = recState;
+  recState = st;
+  recAt = Date.now();
+  renderRecorder();
+  if (prev.state === "transcribing" && st.state === "done") {
+    refreshCalls().then(() => { if (!rec && st.name) location.hash = `#/rec/${enc(st.name)}`; });
+  }
+}
+
+async function openFloating(auto) {
+  if (pip) { pip.focus(); return; }
+  if (!("documentPictureInPicture" in window)) {
+    if (!auto) toast("La finestra mobile funziona in Chrome e in Edge.");
     return;
   }
-  const lang = el("select", { title: "lingua della call" },
-    el("option", { value: "" }, "lingua: auto"), el("option", { value: "it" }, "italiano"),
-    el("option", { value: "en" }, "inglese"));
-  const mic = el("input", { type: "checkbox", checked: "" });
-  const start = el("button", { class: "rec", onclick: async () => {
-    try {
-      renderRecbar(await recPost("start", { lang: lang.value || null, mic: mic.checked }));
-      pollRecording();
-    } catch (e) { alert(e.message); }
-  } }, "● Registra");
-  const extra = [];
-  if (st.state === "done" && st.name) {
-    extra.push(el("a", { class: "btn", href: `#/rec/${encodeURIComponent(st.name)}` },
-      `apri ${st.name}`));
-  } else if (st.state === "error") {
-    extra.push(el("span", { class: "err", title: st.message }, `errore: ${st.message}`));
-  }
-  recbar.replaceChildren(...extra, lang, el("label", { class: "toggle" }, mic, " microfono"), start);
-  if (prev && prev.state === "transcribing" && st.state === "done" && !location.hash.startsWith("#/rec/")) {
-    route();  // refresh the list with the new call
-  }
-}
-
-async function pollRecording() {
   try {
-    renderRecbarIfChanged(await getJSON("/api/record/status"));
-  } catch (e) { /* server restarting */ }
-  const active = recState && ["recording", "transcribing"].includes(recState.state);
-  clearTimeout(recTimer);
-  recTimer = setTimeout(pollRecording, active ? 250 : 3000);
+    pip = await window.documentPictureInPicture.requestWindow({ width: 220, height: 52 });
+  } catch (e) {
+    if (!auto) toast("Finestra mobile non disponibile.");
+    return;
+  }
+  const doc = pip.document;
+  doc.head.append(el("link", { rel: "stylesheet", href: `${location.origin}/static/style.css` }));
+  doc.title = "ilat";
+  doc.body.className = "pip";
+  const v = buildLive(true);
+  v.floating = true;
+  liveViews.push(v);
+  doc.body.append(v.root);
+  v.update(recState);
+  pip.addEventListener("pagehide", () => {
+    pip = null;
+    liveViews = liveViews.filter(x => x !== v);
+  });
 }
 
-function renderRecbarIfChanged(st) {
-  // Re-render the idle controls only when the state changes, so the selects keep their value.
-  const idle = !["recording", "transcribing"].includes(st.state);
-  if (idle && recState && recState.state === st.state && recState.name === st.name) return;
-  renderRecbar(st);
+function closeFloating() {
+  if (pip) pip.close();
+}
+
+async function poll() {
+  try { setRecState(await getJSON("/api/record/status")); } catch (e) { /* server restarting */ }
+  const active = ["recording", "transcribing"].includes(recState.state);
+  clearTimeout(pollTimer);
+  // The floating window stays visible when this tab is in the background: tick from there.
+  pollTimer = (pip || window).setTimeout(poll, active ? 250 : 3000);
 }
 
 // ---------------------------------------------------------------- routing and keys
@@ -373,25 +689,27 @@ async function route() {
   const m = location.hash.match(/^#\/rec\/(.+)$/);
   try {
     if (m) await showRecording(decodeURIComponent(m[1]));
-    else await showList();
+    else showEmpty();
   } catch (e) {
-    main.replaceChildren(el("p", { class: "empty" }, `Errore: ${e.message}`));
+    $main.replaceChildren(el("div", { class: "placeholder" },
+      el("h2", {}, "Non trovata"), el("p", {}, e.message)));
   }
 }
 
-document.addEventListener("keydown", async e => {
-  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $search.focus(); return; }
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (!Object.keys(players).length) return;
   if (e.key === " ") { e.preventDefault(); togglePlay(); }
   else if (e.key === "Escape") { const p = playing(); if (p) p.pause(); }
   else if (e.key === "n" || e.key === "N") { e.preventDefault(); jump(1); }
   else if (e.key === "p" || e.key === "P") { e.preventDefault(); jump(-1); }
-  else if ((e.metaKey || e.ctrlKey) && e.key === "z") {
-    e.preventDefault();
-    try { await render(await post("undo"), {}); } catch (err) { /* nothing to undo */ }
-  }
+  else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const p = players[lastChannel];
+    if (p) p.currentTime = Math.max(0, p.currentTime + (e.key === "ArrowRight" ? 5 : -5));
+  } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
 });
 
 window.addEventListener("hashchange", route);
-route();
-pollRecording();
+refreshCalls().catch(() => {}).then(route);
+poll();
