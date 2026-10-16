@@ -17,6 +17,48 @@ final class DraggableHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { true }
 }
 
+/// A view under the panel's content that moves the window while the mouse is dragged, since
+/// a borderless panel whose content is SwiftUI does not move by itself. A press that barely
+/// moves is a click: ``onClick`` (the dot opens on a click).
+struct DragArea: NSViewRepresentable {
+    var onClick: (() -> Void)?
+
+    func makeNSView(context: Context) -> DragView {
+        let view = DragView()
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ view: DragView, context: Context) { view.onClick = onClick }
+
+    final class DragView: NSView {
+        var onClick: (() -> Void)?
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            let start = NSEvent.mouseLocation
+            let origin = window.frame.origin
+            var moved = false
+            // Follow the mouse until the button is released.
+            while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+                if next.type == .leftMouseUp { break }
+                let now = NSEvent.mouseLocation
+                let dx = now.x - start.x, dy = now.y - start.y
+                if !moved && hypot(dx, dy) < 3 { continue }
+                moved = true
+                window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy))
+            }
+            if moved {
+                window.saveFrame(usingName: "PAROLARecorder")
+            } else {
+                onClick?()
+            }
+        }
+    }
+}
+
 @MainActor
 final class FloatingRecorder {
     private let engine: Engine
@@ -138,33 +180,34 @@ struct RecorderView: View {
     }
 
     private var icon: some View {
-        Button(action: model.toggleSize) {
-            ZStack {
-                Circle().fill(Color.black.opacity(0.88))
-                Circle().strokeBorder(Color.white.opacity(0.12))
-                dot
-            }
+        ZStack {
+            Circle().fill(Color.black.opacity(0.88))
+            Circle().strokeBorder(Color.white.opacity(0.12))
+            dot.allowsHitTesting(false)
+            // On top: a click opens the panel, a drag moves the dot.
+            DragArea(onClick: model.toggleSize).clipShape(Circle())
         }
-        .buttonStyle(.plain)
-        .help("In registrazione: clic per aprire")
+        .help("In registrazione: clic per aprire, trascina per spostare")
         .frame(width: FloatingRecorder.icon.width, height: FloatingRecorder.icon.height)
     }
 
     private var full: some View {
         HStack(spacing: 10) {
-            dot
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(model.time(at: context.date))
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.white)
+            Group {
+                dot
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(model.time(at: context.date))
+                        .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.white)
+                }
+                VStack(spacing: 3) {
+                    meter(model.levels.mic)
+                    meter(model.levels.system)
+                }
+                .frame(width: 44)
+                Spacer(minLength: 0)
             }
-            VStack(spacing: 3) {
-                meter(model.levels.mic)
-                meter(model.levels.system)
-            }
-            .frame(width: 44)
-            .help("Livelli: tu, gli altri")
-            Spacer(minLength: 0)
+            .allowsHitTesting(false)  // clicks here fall through to the drag area
             control(model.paused ? "play.fill" : "pause.fill", model.paused ? "Riprendi" : "Pausa") {
                 model.onAction(model.paused ? "resume" : "pause")
             }
@@ -173,6 +216,8 @@ struct RecorderView: View {
         }
         .padding(.horizontal, 14)
         .frame(width: FloatingRecorder.full.width, height: FloatingRecorder.full.height)
+        // Anywhere but the buttons drags the panel.
+        .background(DragArea(onClick: nil))
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.88)))
         .overlay(
