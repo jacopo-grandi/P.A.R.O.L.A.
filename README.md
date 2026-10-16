@@ -9,7 +9,7 @@ layer will be derived from the verbatim one, never the other way around.
 
 How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
 
-Status: in development; the native Mac app works (Phase 8, see [`docs/PLAN.md`](docs/PLAN.md)).
+Status: in development; the native Mac app works.
 
 ## Install the app
 

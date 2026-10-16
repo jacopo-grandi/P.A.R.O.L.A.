@@ -57,3 +57,6 @@ bin/
 
 # Swift build output of the native app
 app/.build/
+
+# The working plan: local notes, not published
+docs/PLAN.md

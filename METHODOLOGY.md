@@ -2,8 +2,7 @@
 
 How P.A.R.O.L.A. decides what a transcript should be, how it is measured and why each model and
 setting was chosen. Each choice has a short decision note in [`docs/decisions/`](docs/decisions/),
-and each number links to the report it comes from in [`results/`](results/). The decision notes
-and reports are in Italian.
+and each number links to the report it comes from in [`results/`](results/).
 
 ## Summary
 
@@ -105,8 +104,8 @@ On the adjudicated references ([report](results/2026-10-15-adjudicated.md); fide
   [report](results/2026-10-16-glossary.md)). The glossary fixed about half of the domain terms
   but made everything else worse. Model runs use a fixed random seed, because Whisper's
   temperature fallback otherwise samples at random.
-- **Fine-tuning is parked.** The plan for an English-first LoRA on freely licensed data is in
-  [`docs/PLAN.md`](docs/PLAN.md) ([0006](docs/decisions/0006-english-only-training-first.md)).
+- **Fine-tuning is parked.** The plan, an English-first LoRA on freely licensed data, is in
+  [0006](docs/decisions/0006-english-only-training-first.md).
 
 ## Language
 

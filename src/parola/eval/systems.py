@@ -1,4 +1,4 @@
-"""ASR systems compared in the baseline (docs/PLAN.md, Phase 2).
+"""ASR systems compared in the baseline (Phase 2 of the plan).
 
 A system is a backend plus decoding choices: model, forced or detected language, initial
 prompt. Variants of the PLAN: forced language vs automatic detection, with and without an
