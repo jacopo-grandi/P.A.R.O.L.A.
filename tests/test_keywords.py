@@ -89,7 +89,7 @@ def test_title_from_the_top_phrases():
         "il mulching naturale.", "il mulching naturale.", "il mulching naturale.",
         "i semi antichi.", "i semi antichi.", "il meteo.", "il meteo.", filler,
     )  # fmt: skip
-    assert suggest_title(t) == "Mulching enterprise · semi antichi · budget"
+    assert suggest_title(t) == "Mulching naturale e semi antichi"
 
 
 def test_title_stays_short():
@@ -99,3 +99,45 @@ def test_title_stays_short():
              filler)  # fmt: skip
     title = suggest_title(t)
     assert title is not None and len(title) <= 60
+
+
+def test_di_and_of_can_join_a_phrase():
+    t = call("la raccolta delle olive.", "sulla raccolta delle olive.", "the number of seeds.",
+             "number of seeds.")  # fmt: skip
+    assert {"raccolta delle olive", "number of seeds"} <= set(texts(t))
+
+
+def test_adverbs_do_not_name_a_call():
+    t = call("semplicemente il concime.", "basically il concime.", "semplicemente")
+    assert texts(t) == ["concime"]
+
+
+def test_singular_and_plural_count_together():
+    t = call("il pomodoro.", "i pomodori.", "i pomodori.", "un vaso.", "il glossario.")
+    assert key_phrases(t, 1)[0].count == 3  # pomodoro + pomodori
+
+
+def test_a_phrase_inside_a_longer_one_still_counts():
+    t = call("il vaso rialzato.", "il vaso rialzato di ottobre.")
+    assert key_phrases(t, 1)[0].text == "vaso rialzato"
+    assert key_phrases(t, 1)[0].count == 2
+
+
+def test_a_specific_phrase_said_twice_beats_its_head_word():
+    t = call(*["la pizza."] * 5, "la pizza margherita.", "la pizza margherita.")
+    assert texts(t)[0] == "pizza margherita"
+
+
+def test_acronyms_written_in_capitals_once_stay_in_capitals():
+    t = call("il dop.", "il DOP.", "il dop.")
+    assert texts(t) == ["DOP"]
+
+
+def test_title_coordinates_phrases_with_the_same_head():
+    t = call(*["i peperoni rossi."] * 3, *["i peperoni gialli."] * 2, *["il meteo."] * 2, FILLER)
+    assert suggest_title(t) == "Peperoni rossi e gialli"
+
+
+def test_english_title_uses_and():
+    lines = [*["the ripest tomato."] * 3, *["the number of seeds."] * 2, FILLER]
+    assert suggest_title(call(*lines, lang="en")) == "Ripest tomato and number of seeds"

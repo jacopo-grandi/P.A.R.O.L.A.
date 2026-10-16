@@ -1,10 +1,16 @@
 """Key phrases of a call and a title suggested from them, without a language model.
 
-A RAKE-style extractor (Rose et al., 2010; decision 0020): the text is cut at stop words,
-fillers, discourse markers, punctuation and doubtful words; what is left between the cuts are
-candidate phrases of one to three words. A phrase scores how often it is said times how often its
-words are said, so a term repeated through the call ("baking soda", "mulching") beats a phrase said
-once. It works on one call alone, with no archive to compare against.
+A RAKE-style extractor (Rose et al., 2010; decisions 0020, 0022): the text is cut at stop words,
+fillers, discourse markers, verbs, adverbs, generic nouns, numbers, punctuation and doubtful
+words; what is left between the cuts are candidate noun phrases of one to three content words,
+which may hold "di"/"of" ("raccolta delle olive", "number of seeds"). Singular and plural are
+counted together. A phrase scores how often it is said times how often its words are said, so a
+term repeated through the call ("baking soda") beats a phrase said once. It works on one call
+alone, with no archive to compare against.
+
+The title is built like a title, not a tag list: the two best phrases joined by "e"/"and", and
+two phrases with the same head coordinated ("peperoni rossi" + "peperoni gialli" -> "Peperoni
+rossi e gialli").
 
 A doubtful word enters a phrase only if it was transcribed the same way at least
 ``DOUBTFUL_REPEATS`` times: once, it may be a mistake; ten identical "baking soda" are the subject
@@ -22,7 +28,7 @@ from parola.eval.normalize import FILLER_FORMS
 from parola.schema import Transcript
 
 MAX_WORDS = 3
-TITLE_PHRASES = 3
+TITLE_PHRASES = 2
 TITLE_CHARS = 60
 MIN_CONTENT_WORDS = 60  # below this a call is a test or a greeting: no title to suggest
 DOUBTFUL_REPEATS = 3
@@ -81,7 +87,9 @@ also just very more most less much many few each every other another such own sa
 were be been being am have has had having do does did doing done can could will would shall
 should may might must let's i'm you're we're they're i've we've don't doesn't didn't can't
 won't isn't aren't wasn't weren't yes yeah ok okay oh like get got go going gone say said
-thing things way really actually now well right
+thing things way really actually now well right because think know mean want need make makes
+made see look let try use used using gonna wanna kind sort lot lots bit something anything
+everything nothing someone guys maybe probably sure good great nice fine
 """
     )
 )
@@ -114,10 +122,13 @@ GENERIC = frozenset(
         """
 volta volte parte parti modo punto punti tempo momento esempio caso fatto fatti persona persone
 roba discorso domanda domande problema cosa cose giorno giorni settimana anno anni minuto minuti
-secondo pezzo idea senso lato tipo time thing things stuff point part people way question
+secondo pezzo idea senso lato tipo realtà tema temi argomento livello time thing things stuff
+point part people way question work
 """
     )
 )
+# "di"/"of" may join two content words inside a phrase: "raccolta delle olive".
+CONNECTORS = frozenset(_words("di del della dei degli delle dello dell dell' d' of"))
 
 _EDGE = '.,;:!?…"“”«»()[]{}'
 _BREAK_AFTER = re.compile(r"[.,;:!?…]$")
@@ -126,7 +137,7 @@ _ELIDED = re.compile(r"^([a-zà-ù]+')(.+)$", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class Phrase:
-    text: str  # as said, with the most common spelling of each word
+    text: str  # as said, with the most common spelling
     count: int  # times the phrase was said
     score: float
 
@@ -140,47 +151,26 @@ _FILLERS = _fillers()
 
 def _is_stop(word: str) -> bool:
     return (word in STOP_IT or word in STOP_EN or word in DISCOURSE or word in _FILLERS
-            or word in GENERIC or word in NUMBERS or _looks_like_verb(word))  # fmt: skip
+            or word in GENERIC or word in NUMBERS or _looks_like_verb(word)
+            or _looks_like_adverb(word))  # fmt: skip
 
 
 def _looks_like_verb(word: str) -> bool:
     return len(word) >= 6 and word.endswith(_VERB_ENDINGS) and word not in _NOT_VERBS
 
 
-def _runs(t: Transcript) -> tuple[list[list[str]], dict[str, Counter]]:
-    """Runs of content words (lowercased) between breaks, and the spellings seen for each."""
-    runs: list[list[str]] = []
-    spellings: dict[str, Counter] = {}
-    doubtful = Counter(_key(w.text) for s in t.segments for w in s.words if w.doubtful)
-    for seg in t.segments:
-        run: list[str] = []
-        for w in seg.words:
-            raw = w.text.strip()
-            surface = raw.strip(_EDGE)
-            # "l'impatto" -> "impatto": the article is a stop word.
-            if m := _ELIDED.match(surface):
-                if run:
-                    runs.append(run)
-                run = []
-                surface = m.group(2)
-            word = surface.lower()
-            acronym = len(surface) >= 2 and surface.isupper() and surface.isalpha()
-            trusted = not w.doubtful or doubtful[_key(w.text)] >= DOUBTFUL_REPEATS
-            content = (word and trusted and not _is_stop(word)
-                       and not any(c.isdigit() for c in word)
-                       and (len(word) >= 3 or acronym))  # fmt: skip
-            if content:
-                run.append(word)
-                spellings.setdefault(word, Counter())[surface] += 1
-            elif run:
-                runs.append(run)
-                run = []
-            if run and _BREAK_AFTER.search(raw):
-                runs.append(run)
-                run = []
-        if run:
-            runs.append(run)
-    return runs, spellings
+def _looks_like_adverb(word: str) -> bool:
+    """ "semplicemente", "basically": about how something is said, not what."""
+    return (len(word) > 7 and word.endswith("mente")) or (len(word) > 5 and word.endswith("ly"))
+
+
+def fold(word: str) -> str:
+    """Singular and plural counted as one: pomodoro/pomodori, seed/seeds."""
+    if len(word) > 4 and word[-1] in "aeio" and word[-2] not in "aeiou":
+        return word[:-1]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
 
 
 def _key(text: str) -> str:
@@ -189,64 +179,175 @@ def _key(text: str) -> str:
     return (m.group(2) if m else surface).lower()
 
 
-def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
-    """The call's key phrases, best first."""
-    runs, spellings = _runs(t)
-    freq = Counter(w for run in runs for w in run)
-    phrases: Counter[tuple[str, ...]] = Counter()
-    for run in runs:
-        if len(run) <= MAX_WORDS:
-            phrases[tuple(run)] += 1
-        else:  # a long run: its words still count, as single-word candidates
-            for w in run:
-                phrases[(w,)] += 1
-
-    # Said often, made of words said often; a phrase of two or three words weighs a bit more,
-    # since "baking soda" names a subject better than "key" or "result" alone.
-    scored = sorted(
-        (
-            (n * sum(freq[w] for w in p) * (1 + 0.5 * (len(p) - 1)), n, p)
-            for p, n in phrases.items()
-        ),
-        key=lambda x: (-x[0], -x[1], x[2]),
-    )
-    out: list[Phrase] = []
-    taken: set[str] = set()
-    for score, n, p in scored:
-        if set(p) <= taken:  # all its words are already in a better phrase
-            continue
-        out.append(Phrase(" ".join(_common(spellings[w]) for w in p), n, float(score)))
-        taken |= set(p)
-        if len(out) == limit:
-            break
-    return out
+def _content(run: list[tuple[str, str]]) -> list[str]:
+    return [w for w, _ in run if w not in CONNECTORS]
 
 
-def _common(spellings: Counter) -> str:
-    """The usual spelling, lowercase unless the word is always written in capitals."""
+def _runs(t: Transcript) -> list[list[tuple[str, str]]]:
+    """Runs of (lowercase word, spelling as said) between breaks. A connector stays in a run
+    only between two content words."""
+    runs: list[list[tuple[str, str]]] = []
+    doubtful = Counter(_key(w.text) for s in t.segments for w in s.words if w.doubtful)
+
+    def close(run: list[tuple[str, str]]) -> None:
+        if _content(run):
+            runs.append(run)
+
+    for seg in t.segments:
+        run: list[tuple[str, str]] = []
+        pending: list[tuple[str, str]] = []  # a connector waiting for the next content word
+        for w in seg.words:
+            raw = w.text.strip()
+            surface = raw.strip(_EDGE)
+            # "l'impatto" -> "impatto"; "dell'impatto" may continue a phrase as "dell' impatto".
+            if m := _ELIDED.match(surface):
+                lead = m.group(1).lower()
+                if run and lead in CONNECTORS:
+                    pending = [(lead, m.group(1))]
+                else:
+                    close(run)
+                    run, pending = [], []
+                surface = m.group(2)
+            word = surface.lower()
+            acronym = len(surface) >= 2 and surface.isupper() and surface.isalpha()
+            trusted = not w.doubtful or doubtful[_key(w.text)] >= DOUBTFUL_REPEATS
+            content = (word and trusted and not _is_stop(word)
+                       and not any(c.isdigit() for c in word)
+                       and (len(word) >= 3 or acronym))  # fmt: skip
+            ends = bool(_BREAK_AFTER.search(raw))
+            if content:
+                run += [*pending, (word, surface)]
+                pending = []
+            elif run and word in CONNECTORS and not pending and not ends:
+                pending = [(word, surface)]
+            else:
+                close(run)
+                run, pending = [], []
+            if run and ends:
+                close(run)
+                run, pending = [], []
+        close(run)
+    return runs
+
+
+def _spell(spellings: Counter) -> str:
+    """The usual spelling: capitals for an acronym written so at least once (DOP), a capital
+    initial for a name always written so (Giulia), lowercase otherwise."""
     word, _ = spellings.most_common(1)[0]
-    if all(s.isupper() for s in spellings) and len(word) >= 2:
-        return word
-    if all(s[:1].isupper() for s in spellings):  # a name: "Giulia", "Torino"
+    if any(s.isupper() and 2 <= len(s) <= 6 for s in spellings):
+        return next(s for s in spellings if s.isupper())
+    if all(s[:1].isupper() for s in spellings):
         return word[:1].upper() + word[1:].lower()
     return word.lower()
 
 
+def _show(words: tuple[str, ...], spellings: dict[str, Counter]) -> str:
+    out = ""
+    for w in words:
+        text = w if w in CONNECTORS else _spell(spellings[w])
+        out += text if out.endswith("'") or not out else " " + text
+    return out
+
+
+def _inner_phrases(words: list[str]) -> list[list[str]]:
+    """Shorter stretches of a phrase that start and end on content words and hold two or more."""
+    out = []
+    n = len(words)
+    for i in range(n):
+        for j in range(i + 1, n + 1):
+            if (i, j) == (0, n) or words[i] in CONNECTORS or words[j - 1] in CONNECTORS:
+                continue
+            if len([w for w in words[i:j] if w not in CONNECTORS]) >= 2:
+                out.append(words[i:j])
+    return out
+
+
+def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
+    """The call's key phrases, best first."""
+    runs = _runs(t)
+    spellings: dict[str, Counter] = {}
+    for run in runs:
+        for w, surface in run:
+            if w not in CONNECTORS:
+                spellings.setdefault(w, Counter())[surface] += 1
+    freq = Counter(fold(w) for run in runs for w in _content(run))
+    counts: Counter[tuple[str, ...]] = Counter()
+    seen: dict[tuple[str, ...], Counter] = {}  # folded phrase -> the forms it was said in
+    for run in runs:
+        words = [w for w, _ in run]
+        # A long run: its words still count, as single-word candidates.
+        candidates = [words] if len(_content(run)) <= MAX_WORDS else [[w] for w in _content(run)]
+        # A phrase of two or more words also counts where it is said inside a longer one:
+        # "vaso rialzato" in "vaso rialzato di ottobre".
+        if len(_content(run)) <= MAX_WORDS:
+            candidates += _inner_phrases(words)
+        for c in candidates:
+            key = tuple(w if w in CONNECTORS else fold(w) for w in c)
+            counts[key] += 1
+            seen.setdefault(key, Counter())[tuple(c)] += 1
+
+    def score(key: tuple[str, ...], n: int) -> float:
+        content = [w for w in key if w not in CONNECTORS]
+        # Said often, made of words said often; two or three words weigh a bit more, since
+        # "baking soda" names a subject better than "key" or "result" alone.
+        return n * sum(freq[w] for w in content) * (1 + 0.5 * (len(content) - 1))
+
+    ranked = sorted(counts.items(), key=lambda kv: (-score(*kv), -kv[1], kv[0]))
+    chosen: list[tuple[tuple[str, ...], int]] = []
+    for key, n in ranked:
+        words = {w for w in key if w not in CONNECTORS}
+        inside = [
+            i for i, (k, _) in enumerate(chosen) if {w for w in k if w not in CONNECTORS} <= words
+        ]
+        if inside and n >= 2:
+            # A longer phrase said at least twice replaces a better one it contains:
+            # "pizza margherita" over "pizza".
+            chosen[inside[0]] = (key, n)
+            continue
+        if inside or any(words <= {w for w in k if w not in CONNECTORS} for k, _ in chosen):
+            continue
+        chosen.append((key, n))
+        if len(chosen) == limit:
+            break
+    return [
+        Phrase(_show(seen[key].most_common(1)[0][0], spellings), n, float(score(key, n)))
+        for key, n in chosen
+    ]
+
+
+def _language(t: Transcript) -> str:
+    langs = Counter(s.lang for s in t.segments if s.lang)
+    return langs.most_common(1)[0][0] if langs else "it"
+
+
 def suggest_title(t: Transcript) -> str | None:
-    """A title made of the top key phrases, or None when the call is too short to tell."""
-    runs, _ = _runs(t)
-    if sum(len(r) for r in runs) < MIN_CONTENT_WORDS:
+    """A title from the two best key phrases, or None when the call is too short to tell."""
+    if sum(len(_content(r)) for r in _runs(t)) < MIN_CONTENT_WORDS:
         return None
-    phrases = [p for p in key_phrases(t, limit=TITLE_PHRASES * 2) if p.count >= 2]
+    phrases = [p.text for p in key_phrases(t, limit=6) if p.count >= 2]
     if not phrases:
         return None
+    conj = " and " if _language(t) == "en" else " e "
     parts: list[str] = []
-    for p in phrases:
-        if len(parts) == TITLE_PHRASES or len(" · ".join([*parts, p.text])) > TITLE_CHARS:
+    used: set[int] = set()
+    for i, a in enumerate(phrases):
+        if i in used:
+            continue
+        head, *rest = a.split()
+        # Same head, different modifier: "peperoni rossi" + "peperoni gialli".
+        for j in range(i + 1, len(phrases)):
+            b_head, *b_rest = phrases[j].split()
+            if j not in used and rest and b_rest and fold(head.lower()) == fold(b_head.lower()):
+                a = a + conj + " ".join(b_rest)
+                used.add(j)
+                break
+        candidate = conj.join([*parts, a])
+        if parts and (len(candidate) > TITLE_CHARS or conj in a):
+            break  # one coordination per title: "A e B e C e D" no longer reads as a title
+        parts.append(a)
+        if len(parts) == TITLE_PHRASES or conj in a:
             break
-        parts.append(p.text)
-    if not parts:
-        return None
-    first = parts[0]
-    parts[0] = first[:1].upper() + first[1:]
-    return " · ".join(parts)
+    title = conj.join(parts)
+    if len(title) > TITLE_CHARS:
+        title = parts[0]
+    return title[:1].upper() + title[1:]

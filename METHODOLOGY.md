@@ -121,11 +121,14 @@ echo removal; telling the voices apart needs speaker diarization, planned after 
 - **Clean version:** only removes material (fillers, repetitions, false starts) by explicit rules,
   never rewrites. A trained classifier is paused
   ([0012](docs/decisions/0012-clean-layer-by-labeling.md)).
-- **Title:** key phrases chosen without a language model, using a RAKE-style method
-  ([0020](docs/decisions/0020-title-from-key-phrases.md)). The text is split at hand-written
-  Italian and English stop words, fillers, discourse markers, verbs and punctuation. A doubtful
-  word counts only if it was transcribed the same way at least three times. The title is a
-  suggestion: one the user set is never replaced.
+- **Title:** key noun phrases chosen without a language model, using a RAKE-style method
+  ([0020](docs/decisions/0020-title-from-key-phrases.md),
+  [0022](docs/decisions/0022-titles-read-like-titles.md)). The text is split at hand-written
+  Italian and English stop words, fillers, discourse markers, verbs, adverbs and punctuation;
+  "di"/"of" may stay inside a phrase, and singular and plural count together. The title joins
+  the two best phrases ("Peperoni rossi e gialli", "Ripest tomato and number of
+  seeds"). A doubtful word counts only if it was transcribed the same way at least three
+  times. The title is a suggestion: one the user set is never replaced.
 
 ## Reproducing the numbers
 
@@ -162,3 +165,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0019](docs/decisions/0019-rename-to-parola.md) | Rename to P.A.R.O.L.A. |
 | [0020](docs/decisions/0020-title-from-key-phrases.md) | Title from key phrases, without a language model |
 | [0021](docs/decisions/0021-import-audio-and-video-files.md) | Importing audio and video files |
+| [0022](docs/decisions/0022-titles-read-like-titles.md) | Titles that read like titles |
