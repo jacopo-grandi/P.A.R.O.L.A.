@@ -70,14 +70,35 @@ let recName = null;
 let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
 let editing = null;  // {seg, start, end}
 
-function play(word) {
+let stopAt = null; // {channel, t}: stop playback there (excerpt of a doubtful run)
+const EXCERPT_TAIL = 1.0;
+
+function play(word, until) {
   const p = players[word.channel];
   if (!p) return;
   for (const [c, q] of Object.entries(players)) if (c !== word.channel) q.pause();
   p.currentTime = Math.max(0, word.start - LEAD);
+  stopAt = until === undefined ? null : { channel: word.channel, t: until };
   p.play().catch(() => {});
   target = word;
   mark(word.el);
+}
+
+function playing() {
+  return Object.values(players).find(p => !p.paused) || null;
+}
+
+function togglePlay() {
+  const p = playing();
+  if (p) { p.pause(); return; }
+  const w = current && words.find(w => w.el === current);
+  const q = players[w ? w.channel : Object.keys(players)[0]];
+  if (q) { stopAt = null; q.play().catch(() => {}); }
+}
+
+function updatePlayButton() {
+  const b = document.getElementById("playbtn");
+  if (b) b.textContent = playing() ? "❚❚ pausa" : "▶︎ riprendi";
 }
 
 function mark(e) {
@@ -89,6 +110,10 @@ function mark(e) {
 function follow(channel) {
   // Highlight the word being played on this channel.
   const t = players[channel].currentTime;
+  if (stopAt && stopAt.channel === channel && t >= stopAt.t) {
+    players[channel].pause();
+    stopAt = null;
+  }
   // Playback starts LEAD seconds early: keep the chosen word highlighted until it is reached.
   if (target && target.channel === channel && t < target.start) return;
   target = null;
@@ -120,17 +145,27 @@ function openEditor(seg, start, end, autoplay) {
   first.el.before(input);
   for (let k = start; k < end; k++) wordAt(seg, k).el.classList.add("editing");
   input.addEventListener("keydown", async e => {
-    if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      const p = playing();
+      if (p) p.pause();
+      closeEditor();
+    }
     else if (e.key === "Enter") {
       e.preventDefault();
       const after = await post("correct", { segment: seg, start, end, text: input.value });
       await render(after, { seg, start, auto: true });
-    } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); play(first); }
+    } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); playRun(seg, start, end); }
   });
   input.focus();
   input.select();
   first.el.scrollIntoView({ block: "center", behavior: "smooth" });
-  if (autoplay) play(first);
+  if (autoplay) playRun(seg, start, end);
+}
+
+function playRun(seg, start, end) {
+  const first = wordAt(seg, start), last = wordAt(seg, end - 1);
+  if (first) play(first, (last || first).end + EXCERPT_TAIL);
 }
 
 function closeEditor() {
@@ -202,6 +237,7 @@ async function render(data, after) {
   const exp = f => el("a", { class: "btn", href: `/export/${encodeURIComponent(recName)}.${f}` }, f);
   const bar = el("div", { class: "bar" },
     el("h1", {}, s.name),
+    el("button", { id: "playbtn", onclick: togglePlay }, "▶︎ riprendi"),
     el("span", { class: "todo" }, runs.length ? `${runs.length} da rivedere` : "tutto rivisto ✓"),
     el("button", { onclick: () => jump(-1) }, "← P"),
     el("button", { onclick: () => jump(1) }, "N →"),
@@ -214,11 +250,13 @@ async function render(data, after) {
     el("a", { class: "btn", href: "#/" }, "elenco"));
   const help = el("p", { class: "help" },
     `${clock(s.duration)} · ${s.words} parole · ${s.doubtful} dubbie · ${s.checked} verificate. ` +
-    "Clic su una parola: ascolta da lì. N: prossima dubbia (si ascolta e si apre in modifica), " +
-    "Invio salva (senza modifiche la conferma) e passa alla successiva, Esc annulla, " +
-    "doppio clic: modifica qualsiasi parola, ⌘Z: annulla l'ultima modifica, spazio: play/pausa.");
+    "Clic su una parola: ascolta da lì (spazio o Esc per fermare). N: prossima dubbia, si " +
+    "ascolta solo quel pezzetto e si apre in modifica; Invio salva (senza modifiche la " +
+    "conferma) e passa alla successiva, Esc chiude, Ctrl-spazio riascolta. Doppio clic: " +
+    "modifica qualsiasi parola. ⌘Z: annulla l'ultima modifica.");
   const y = window.scrollY;
   main.replaceChildren(bar, help, body);
+  updatePlayButton();
   if (after && after.seg !== undefined) {
     window.scrollTo(0, y);
     if (after.auto) {
@@ -239,6 +277,8 @@ async function showRecording(name) {
   for (const [channel, url] of Object.entries(data.audio)) {
     const a = el("audio", { preload: "metadata", src: url });
     a.addEventListener("timeupdate", () => follow(channel));
+    a.addEventListener("play", updatePlayButton);
+    a.addEventListener("pause", updatePlayButton);
     players[channel] = a;
     audioBox.append(a);
   }
@@ -260,12 +300,9 @@ async function route() {
 document.addEventListener("keydown", async e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
   if (!Object.keys(players).length) return;
-  if (e.key === " ") {
-    e.preventDefault();
-    const w = current && words.find(w => w.el === current);
-    const p = players[w ? w.channel : Object.keys(players)[0]];
-    p.paused ? p.play() : p.pause();
-  } else if (e.key === "n" || e.key === "N") { e.preventDefault(); jump(1); }
+  if (e.key === " ") { e.preventDefault(); togglePlay(); }
+  else if (e.key === "Escape") { const p = playing(); if (p) p.pause(); }
+  else if (e.key === "n" || e.key === "N") { e.preventDefault(); jump(1); }
   else if (e.key === "p" || e.key === "P") { e.preventDefault(); jump(-1); }
   else if ((e.metaKey || e.ctrlKey) && e.key === "z") {
     e.preventDefault();
