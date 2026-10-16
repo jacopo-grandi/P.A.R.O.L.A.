@@ -223,15 +223,40 @@ def mark_doubts(primary: Transcript, second: Transcript) -> int:
     return len(flagged)
 
 
+def provisional(parts: dict[str, Transcript], audio_file: str, duration: float) -> Transcript:
+    """What the final transcript will look like with the steps done so far (decision 0031).
+
+    A deep copy, so the steps still to come (doubtful words, voices) never change a transcript
+    the app may be reading.
+    """
+    from parola.annotate import merge_segments
+
+    copies = {c: t.model_copy(deep=True) for c, t in parts.items()}
+    if "mic" in copies and "system" in copies:
+        drop_echo(copies["mic"], copies["system"])
+    copies = {c: merge_segments(t) for c, t in copies.items()}
+    return merge_channels(copies, audio_file, duration)
+
+
+# Share of the work of each step, in minutes per hour of audio, measured on en-001 (1 h, imported)
+# on 2026-10-16: Whisper 3:00, Parakeet 1:14, voices 3:23 (decision 0031).
+WEIGHTS = {"primary": 3.0, "second": 1.2, "speakers": 3.4}
+
+
 def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | None = None,
                          second: ASRBackend | None = None, progress=None,
-                         speakers: bool = True) -> tuple[Path, Path]:  # fmt: skip
+                         speakers: bool = True, preview=None) -> tuple[Path, Path]:  # fmt: skip
     """Transcribe each channel and write <name>.json and <name>.txt next to the audio.
 
     With ``second``, each channel is also transcribed by a second system and the words of the
     primary transcript it does not confirm are marked as doubtful. On the test set Parakeet v3
     catches about two thirds of turbo's errors while flagging 12% of the words
     (results/2026-10-16-doubt-analisi.md).
+
+    ``preview(stage, transcript)`` receives the provisional transcript as soon as Whisper is done
+    on every channel (stage ``"transcript"``) and again with the doubtful words when the voices
+    are still to come (stage ``"doubts"``), so the app can show the text while it waits
+    (decision 0031). Nothing is written to disk before the final transcript.
     """
     parts: dict[str, Transcript] = {}
     with_speech = []
@@ -247,13 +272,12 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         with_speech.append(c)
     if not with_speech:
         raise CaptureError("every channel is silent: nothing to transcribe")
-    # Progress in units of work: Whisper takes about four times as long as Parakeet on the same
-    # audio (RTF 0.047 vs 0.013, results/2026-10-15-adjudicated.md), so its steps weigh more.
-    # Telling voices apart (decision 0026) runs on the channels with several people on them.
+    # Progress in units of work (WEIGHTS). Telling voices apart (decision 0026) runs on the
+    # channels with several people on them.
     voiced = [c for c in with_speech if c in VOICED_CHANNELS] if speakers else []
     if voiced:
         voiced = _speaker_models() and voiced
-    weights = {"primary": 4.0, "second": 1.0, "speakers": 1.0}
+    weights = WEIGHTS
     total_steps = len(with_speech) * (weights["primary"] + (weights["second"] if second else 0))
     total_steps += len(voiced or []) * weights["speakers"]
     done = 0.0
@@ -275,19 +299,34 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
             # time and the same transcript (decision 0027).
             release_models()
 
+    duration = max(rec.capture[c]["seconds"] for c in with_speech)
+    audio_file = f"{rec.name}.*.wav"
+
+    def show(stage: str) -> None:
+        if preview is not None:
+            preview(stage, provisional(parts, audio_file, duration))
+
+    # Whisper on every channel first, so the text can be shown before the second opinion; each
+    # run is independent, so the order does not change the result.
+    work = {c: rec.out_dir / f".{rec.name}.{c}" for c in with_speech}
+    side = {c: f" {LABELS[c]}" if LABELS[c] else "" for c in with_speech}
     for channel in with_speech:
-        work = rec.out_dir / f".{rec.name}.{channel}"
-        side = f" {LABELS[channel]}" if LABELS[channel] else ""
-        parts[channel] = run(backend, "primary", rec.path(channel), work, f"trascrizione{side}")
+        parts[channel] = run(backend, "primary", rec.path(channel), work[channel],
+                             f"trascrizione{side[channel]}")  # fmt: skip
         done += weights["primary"]
-        if second is not None:
-            other = run(second, "second", rec.path(channel), work / "second",
-                        f"parole dubbie{side}")  # fmt: skip
+    show("transcript")
+    if second is not None:
+        for channel in with_speech:
+            other = run(second, "second", rec.path(channel), work[channel] / "second",
+                        f"parole dubbie{side[channel]}")  # fmt: skip
             done += weights["second"]
             n = mark_doubts(parts[channel], other)
             total = sum(len(seg.words) for seg in parts[channel].segments)
             print(f"{channel}: {n} doubtful words out of {total}", file=sys.stderr)
-        shutil.rmtree(work, ignore_errors=True)
+        if voiced:
+            show("doubts")
+    for channel in with_speech:
+        shutil.rmtree(work[channel], ignore_errors=True)
     if "mic" in parts and "system" in parts:
         n = drop_echo(parts["mic"], parts["system"])
         if n:
@@ -297,8 +336,7 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     from parola.annotate import merge_segments
 
     parts = {c: merge_segments(t) for c, t in parts.items()}
-    duration = max(rec.capture[c]["seconds"] for c in with_speech)
-    merged = merge_channels(parts, f"{rec.name}.*.wav", duration)
+    merged = merge_channels(parts, audio_file, duration)
     for channel in voiced or []:
         from parola import diarize
         from parola.speakers import assign

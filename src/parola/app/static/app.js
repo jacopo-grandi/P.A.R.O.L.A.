@@ -465,6 +465,7 @@ function wordAt(seg, k) {
 
 function openEditor(seg, start, end, autoplay) {
   closeEditor();
+  if (rec.provisional) return;  // read-only until the final transcript is written
   const first = wordAt(seg, start);
   if (!first) return;
   editing = { seg, start, end };
@@ -549,13 +550,15 @@ function jump(direction) {
 }
 
 async function undo() {
+  if (!rec || rec.provisional) return;
   try { await render(await post("undo"), {}); } catch (e) { toast("Niente da annullare."); }
 }
 
 function renderHeading() {
   const s = rec.summary;
-  const h1 = el("h1", { title: `${s.title} (doppio clic per rinominare)` }, s.title);
-  h1.addEventListener("dblclick", () => renameInPlace(h1, s));
+  const h1 = el("h1", { title: rec.provisional ? s.title : `${s.title} (doppio clic per rinominare)` },
+                s.title);
+  if (!rec.provisional) h1.addEventListener("dblclick", () => renameInPlace(h1, s));
   const when = new Date(s.started_at).toLocaleString("it-IT",
     { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit",
       minute: "2-digit" });
@@ -648,7 +651,16 @@ async function render(data, after) {
           onclick: e => { e.stopPropagation(); voiceMenu(e.currentTarget, si); } }, "•") : null),
       text));
   });
-  if (runs.length) {
+  if (rec.provisional) {
+    // Whisper is done, the rest is still running (decision 0031): the text can be read and
+    // listened to, and is replaced by the final one, so nothing can be corrected yet.
+    view.stage = el("span", { class: "stage" });
+    body.prepend(el("p", { class: "hint provisional" },
+      rec.provisional === "doubts"
+        ? "Testo provvisorio con le parole dubbie: chi parla arriva tra poco. "
+        : "Testo provvisorio: parole dubbie e chi parla arrivano tra poco. ",
+      "Puoi leggerlo e ascoltarlo; le correzioni quando è pronto.", view.stage));
+  } else if (runs.length) {
     body.prepend(el("p", { class: "hint" },
       "Clic su una parola per ascoltarla. ", el("kbd", {}, "N"), " passa alla prossima dubbia, ",
       el("kbd", {}, "Invio"), " salva o conferma, ", el("kbd", {}, "Esc"), " chiude, ",
@@ -669,8 +681,10 @@ async function render(data, after) {
     : null;
   const more = iconButton("more", "Esporta", e => { e.stopPropagation(); exportMenu(actions); });
   const undoBtn = iconButton("undo", "Annulla l'ultima modifica (⌘Z)", undo);
-  undoBtn.disabled = !rec.summary.edits;
-  const actions = el("div", { class: "actions" }, voicesBtn, view.filter, undoBtn, more);
+  undoBtn.disabled = !rec.summary.edits || !!rec.provisional;
+  // Exports read the final file: none while the transcript is provisional.
+  const actions = el("div", { class: "actions" }, voicesBtn, view.filter, undoBtn,
+                     rec.provisional ? null : more);
   view.findInput = el("input", { class: "find-input", type: "search",
                                  placeholder: "Trova nella call  ⌘F",
                                  "aria-label": "Trova nella call", autocomplete: "off" });
@@ -716,7 +730,10 @@ async function render(data, after) {
     const box = timeline.getBoundingClientRect();
     seek(((e.clientX - box.left) / box.width) * total);
   });
-  const review = runs.length
+  const review = rec.provisional
+    ? el("div", { class: "review" }, ...(runs.length ? [el("b", {}, String(runs.length)), "dubbie · "] : []),
+         "provvisoria")
+    : runs.length
     ? el("div", { class: "review" }, iconButton("prev", "Dubbia precedente (P)", () => jump(-1)),
          el("b", {}, String(runs.length)), "da rivedere",
          iconButton("next", "Prossima dubbia (N)", () => jump(1)))
@@ -736,6 +753,7 @@ async function render(data, after) {
   if (find) applyFind(false);
   const p = lastChannel && players[lastChannel];
   updateProgress(p ? p.currentTime : 0);
+  renderPending();  // the stage line in the provisional banner
 
   if (after && after.seg !== undefined) {
     view.scroll.scrollTop = scrollY;
@@ -880,12 +898,13 @@ function stepFind(direction) {
   applyFind(true);
 }
 
-async function showRecording(name) {
+async function showRecording(name, data = null) {
   stopAll();
   find = null;  // a search belongs to the call it was made in
   recName = name;
   renderCalls();
-  const data = await getJSON(`/api/recordings/${enc(name)}`);
+  renderPending();
+  data = data || await getJSON(`/api/recordings/${enc(name)}`);
   players = {};
   lastChannel = null;
   $audio.replaceChildren();
@@ -912,6 +931,7 @@ function showEmpty() {
   rec = recName = null;
   view = {};
   renderCalls();
+  renderPending();
   $main.replaceChildren(el("div", { class: "placeholder" },
     ...(calls.length
       ? [el("h2", {}, "Scegli una call"), el("p", {}, "Oppure registrane una nuova.")]
@@ -1021,10 +1041,19 @@ function renderRecorder() {
 }
 
 const pendingView = {};
+// What the transcription is doing, from the progress message ("parole dubbie Altri" too).
+const STEPS = [["trascrizione", "Trascrizione"], ["parole dubbie", "Parole dubbie"],
+               ["chi parla", "Chi parla"]];
 
 function renderPending() {
-  // The call being uploaded or transcribed, at the top of the list, until it is ready.
+  // The call being uploaded or transcribed, at the top of the list, until it is ready. Once
+  // Whisper is done it opens the provisional text (decision 0031).
   let title, text, pct;
+  const preview = !uploading && recState.state === "transcribing" && recState.preview;
+  if (view.stage && rec && rec.provisional && recName === recState.name &&
+      recState.state === "error") {
+    view.stage.textContent = " La trascrizione si è fermata: questo testo non è stato salvato.";
+  }
   if (uploading) {
     title = uploading.name;
     pct = uploading.pct;
@@ -1033,7 +1062,9 @@ function renderPending() {
     title = recState.source ? recState.source.replace(/\.[^.]+$/, "") : "Registrazione";
     const [done, total] = recState.step || [0, 0];
     pct = total ? Math.min(99, Math.round((done / total) * 100)) : 0;
-    text = recState.message === "conversione" ? "Conversione…" : `Trascrizione… ${pct}%`;
+    const step = STEPS.find(([m]) => (recState.message || "").startsWith(m));
+    text = recState.message === "conversione" ? "Conversione…"
+                                              : `${step ? step[1] : "Trascrizione"}… ${pct}%`;
   } else {
     $pending.hidden = true;
     return;
@@ -1042,15 +1073,44 @@ function renderPending() {
     pendingView.title = el("span", { class: "title" });
     pendingView.text = el("span", { class: "sub" });
     pendingView.bar = el("i");
-    $pending.replaceChildren(el("div", { class: "group" }, "In corso"),
-      el("div", { class: "pending-call" }, el("span", { class: "pending-dot blink" }),
-        el("div", { class: "pending-body" }, pendingView.title, pendingView.text,
-          el("div", { class: "bar" }, pendingView.bar))));
+    pendingView.row = el("a", { class: "pending-call" }, el("span", { class: "pending-dot blink" }),
+      el("div", { class: "pending-body" }, pendingView.title, pendingView.text,
+        el("div", { class: "bar" }, pendingView.bar)));
+    $pending.replaceChildren(el("div", { class: "group" }, "In corso"), pendingView.row);
   }
   $pending.hidden = false;
   pendingView.title.textContent = title;
   pendingView.text.textContent = text;
   pendingView.bar.style.width = `${pct}%`;
+  if (preview) pendingView.row.href = `#/rec/${enc(recState.name)}`;
+  else pendingView.row.removeAttribute("href");
+  pendingView.row.classList.toggle("active", !!preview && recName === recState.name);
+  if (view.stage && rec && rec.provisional && recName === recState.name) {
+    view.stage.textContent = ` ${text}`;
+  }
+}
+
+async function refreshShown(final) {
+  // The call on screen is the one being transcribed: its text moves to the next stage in place.
+  const name = recName;
+  let data;
+  try { data = await getJSON(`/api/recordings/${enc(name)}`); } catch (e) { return; }
+  if (recName !== name) return;  // another call was opened meanwhile
+  if (!final) { await render(data, {}); return; }  // same audio: only the text changes
+  // The final transcript: editable, and the audio is now FLAC (decision 0024), so new players,
+  // at the same point.
+  const p = lastChannel && players[lastChannel];
+  const at = p ? p.currentTime : 0, wasPlaying = !!(p && !p.paused);
+  const scrollY = view.scroll ? view.scroll.scrollTop : 0;
+  await showRecording(name, data);
+  if (view.scroll) view.scroll.scrollTop = scrollY;
+  const q = lastChannel && players[lastChannel];
+  if (q && at) {
+    q.addEventListener("loadedmetadata", () => {
+      q.currentTime = at;
+      if (wasPlaying) q.play().catch(() => {});
+    }, { once: true });
+  }
 }
 
 function setRecState(st) {
@@ -1058,10 +1118,22 @@ function setRecState(st) {
   recState = st;
   recAt = Date.now();
   renderRecorder();
+  if (st.state === "transcribing" && st.preview && st.preview !== prev.preview && st.name) {
+    // Whisper is done (decision 0031): the text shows up, then the doubtful words.
+    if (recName === st.name) refreshShown(false);
+    else if (!prev.preview && (!rec || st.name === imported)) {
+      imported = null;  // opened now: not again when it is done
+      location.hash = `#/rec/${enc(st.name)}`;
+    }
+  }
   if (prev.state === "transcribing" && st.state === "done") {
-    const open = !rec || st.name === imported;  // a file you just imported opens by itself
+    const here = recName === st.name;
+    const open = !here && (!rec || st.name === imported);  // a file you just imported opens by itself
     imported = null;
-    refreshCalls().then(() => { if (open && st.name) location.hash = `#/rec/${enc(st.name)}`; });
+    refreshCalls().then(() => {
+      if (here) refreshShown(true);
+      else if (open && st.name) location.hash = `#/rec/${enc(st.name)}`;
+    });
   }
 }
 

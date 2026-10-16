@@ -22,6 +22,7 @@ from pathlib import Path
 from parola.asr import release_models
 from parola.audio import extract_audio, wav_duration
 from parola.capture.recorder import Recording, build_helper, transcribe_recording
+from parola.schema import Transcript
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -58,6 +59,9 @@ class RecordingSession:
         self.message = ""
         self.step = (0, 0)
         self.source: str | None = None  # file name of an import, None for a recording
+        # The transcript so far while transcribing, with its stage (decision 0031): kept in
+        # memory only, so nothing can edit it and nothing stale is left if the app stops.
+        self._preview: tuple[str, Transcript] | None = None
 
     # ---------------------------------------------------------------- recording
 
@@ -82,6 +86,7 @@ class RecordingSession:
             self.source = None
             self.started, self.levels, self.message, self.step = time.time(), {}, "", (0, 0)
             self.paused_at, self.paused_total, self._ready = None, 0.0, False
+            self._preview = None
             threading.Thread(target=self._read_levels, args=(self._proc,), daemon=True).start()
         return self.status()
 
@@ -146,13 +151,18 @@ class RecordingSession:
         def progress(message: str, done: int, total: int) -> None:
             self.message, self.step = message, (done, total)
 
+        def preview(stage: str, transcript: Transcript) -> None:
+            self._preview = (stage, transcript)
+
         try:
             backend, second = self._backends()
-            transcribe_recording(rec, backend, self.language, second=second, progress=progress)
+            transcribe_recording(rec, backend, self.language, second=second, progress=progress,
+                                 preview=preview)  # fmt: skip
             self.state, self.message = "done", ""
         except Exception as e:  # shown in the UI; the audio files stay on disk
             self.state, self.message = "error", f"transcription failed: {e}"
         finally:
+            self._preview = None
             # The server waits for the next call: the models have no reason to stay in memory.
             release_models()
 
@@ -172,7 +182,7 @@ class RecordingSession:
             self.state, self.name, self.language = "transcribing", name, language
             self.source = original
             self.started, self.levels, self.message, self.step = None, {}, "conversione", (0, 0)
-            self.paused_at, self.paused_total = None, 0.0
+            self.paused_at, self.paused_total, self._preview = None, 0.0, None
         threading.Thread(target=self._import, args=(upload, original, name, started_at),
                          daemon=True).start()  # fmt: skip
         return self.status()
@@ -216,11 +226,19 @@ class RecordingSession:
 
     # ---------------------------------------------------------------- status
 
+    def provisional(self, name: str) -> tuple[str, Transcript] | None:
+        """The stage and transcript so far of the call being transcribed, if it is ``name``."""
+        preview = self._preview  # one read: the thread may replace it meanwhile
+        if preview is None or self.name != name or self.state != "transcribing":
+            return None
+        return preview
+
     def status(self) -> dict:
         elapsed = 0.0
         if self.state == "recording" and self.started:
             now = self.paused_at or time.time()
             elapsed = now - self.started - self.paused_total
+        preview = self._preview
         return {
             "state": self.state,
             "name": self.name,
@@ -231,4 +249,6 @@ class RecordingSession:
             "levels": {} if self.paused_at is not None else self.levels,
             "message": self.message,
             "step": list(self.step),
+            # "transcript" once Whisper is done, "doubts" with the doubtful words, else None.
+            "preview": preview[0] if preview else None,
         }

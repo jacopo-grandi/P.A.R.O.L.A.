@@ -3,6 +3,7 @@
 import json
 import stat
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -242,9 +243,16 @@ class Reporting(Fake):
 
 
 @requires_ffmpeg
-def test_progress_moves_during_each_step(tmp_path):
-    from parola.capture.recorder import Recording, transcribe_recording
+def test_progress_moves_during_each_step(tmp_path, monkeypatch):
+    from parola.capture.recorder import WEIGHTS, Recording, transcribe_recording
 
+    monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: True)
+
+    def diarize(path, progress=None):
+        progress(1.0)
+        return []
+
+    monkeypatch.setattr("parola.diarize.diarize", diarize)
     tone(tmp_path / "c.mixed.wav")
     rec = Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
     seen = []
@@ -256,8 +264,13 @@ def test_progress_moves_during_each_step(tmp_path):
     transcribe_recording(rec, first, "it", second=second, progress=progress)
     shares = [round(s, 2) for _, s in seen]
     assert shares == sorted(shares) and shares[0] == 0 and shares[-1] == 1.0
-    # Whisper's step weighs four times Parakeet's: halfway through it is 40% of the work.
-    assert ("trascrizione", 0.4) in [(m, round(s, 2)) for m, s in seen]
+    # The steps weigh what they took on a 1 h file: voices as long as Whisper, Parakeet less
+    # than half, so the bar does not crawl at the end (decision 0031).
+    assert WEIGHTS["speakers"] >= WEIGHTS["primary"] > 2 * WEIGHTS["second"]
+    total = sum(WEIGHTS.values())
+    reached = [(m, round(s, 2)) for m, s in seen]
+    assert ("trascrizione", round(WEIGHTS["primary"] / 2 / total, 2)) in reached
+    assert ("chi parla", round((WEIGHTS["primary"] + WEIGHTS["second"]) / total, 2)) in reached
     assert first.on_progress is None and second.on_progress is None  # handed back
 
 
@@ -304,3 +317,94 @@ def test_each_engine_step_releases_the_models(tmp_path, monkeypatch):
     rec = Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
     transcribe_recording(rec, Fake("ciao a tutti"), "it", second=Fake("ciao a voi"))
     assert len(released) == 2  # after Whisper and after Parakeet: one engine in memory at a time
+
+
+class Waiting(Fake):
+    """A fake second opinion that waits until the test lets it go."""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.go = threading.Event()
+
+    def transcribe(self, wav_path, language=None):
+        assert self.go.wait(10)
+        return super().transcribe(wav_path, language)
+
+
+def wait_preview(session, stage, timeout=10):
+    deadline = time.time() + timeout
+    while session.status()["preview"] != stage and time.time() < deadline:
+        time.sleep(0.02)
+    return session.status()
+
+
+@requires_ffmpeg
+def test_the_text_shows_while_the_rest_runs_and_cannot_be_edited(tmp_path, helper, monkeypatch):
+    """Decision 0031: Whisper's text, read-only, then the doubtful words, then the final file."""
+    monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: True)
+    voices_go = threading.Event()
+
+    def diarize(path, progress=None):
+        assert voices_go.wait(10)
+        return [(0.0, 0.15, 0), (0.15, 1.0, 1)]
+
+    monkeypatch.setattr("parola.diarize.diarize", diarize)
+    second = Waiting("ciao a voi")
+    session = RecordingSession(tmp_path, binary=helper,
+                               backends=lambda: (Fake("ciao a tutti"), second))  # fmt: skip
+    client = TestClient(create_app(tmp_path, session=session))
+    session.import_file(tone(tmp_path / "u.m4a"), "lezione.m4a", "it")
+
+    # Whisper is done, Parakeet is waiting: the text is there, without doubts or voices.
+    st = wait_preview(session, "transcript")
+    assert st["state"] == "transcribing" and st["preview"] == "transcript"
+    rec = client.get("/api/recordings/lezione").json()
+    assert rec["provisional"] == "transcript"
+    assert " ".join(s["text"] for s in rec["segments"]) == "ciao a tutti"
+    assert not any(w["doubtful"] for s in rec["segments"] for w in s["words"])
+    assert rec["voices"] == {} and rec["audio"] == {"mixed": "/audio/lezione/mixed"}
+    assert rec["summary"]["title"] == "lezione" and rec["summary"]["source"] == "lezione.m4a"
+    assert client.get("/audio/lezione/mixed").status_code == 200  # it can be listened to
+    # Nothing can change it: the final file replaces it.
+    span = {"segment": 0, "start": 0, "end": 1, "text": "salve"}
+    assert client.post("/api/recordings/lezione/correct", json=span).status_code == 404
+    assert client.post("/api/recordings/lezione/rename", json={"title": "x"}).status_code == 404
+    assert client.delete("/api/recordings/lezione").status_code == 404
+    assert client.get("/export/lezione.txt").status_code == 404
+    assert client.get("/api/recordings").json() == []  # listed once it is final
+    assert not (tmp_path / "lezione.json").exists()
+
+    # Parakeet is done, the voices are running: now with the doubtful words.
+    second.go.set()
+    assert wait_preview(session, "doubts")["preview"] == "doubts"
+    rec = client.get("/api/recordings/lezione").json()
+    assert rec["provisional"] == "doubts"
+    words = [(w["text"], w["doubtful"]) for s in rec["segments"] for w in s["words"]]
+    assert words == [("ciao", False), ("a", False), ("tutti", True)]
+    assert not any(s["speaker"] for s in rec["segments"]) and rec["voices"] == {}
+    assert client.post("/api/recordings/lezione/correct", json=span).status_code == 404
+
+    # The final transcript: written, editable, with the voices.
+    voices_go.set()
+    st = wait_for(session, "done")
+    assert st["state"] == "done" and st["preview"] is None
+    rec = client.get("/api/recordings/lezione").json()
+    assert rec["provisional"] is None and set(rec["voices"]) == {"mixed:1", "mixed:2"}
+    assert client.post("/api/recordings/lezione/correct", json=span).status_code == 200
+
+
+@requires_ffmpeg
+def test_a_failure_after_whisper_leaves_no_provisional_text(tmp_path, helper, monkeypatch):
+    monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: False)
+
+    class Broken(Fake):
+        def transcribe(self, wav_path, language=None):
+            raise RuntimeError("out of memory")
+
+    session = RecordingSession(tmp_path, binary=helper,
+                               backends=lambda: (Fake("ciao"), Broken("ciao")))  # fmt: skip
+    client = TestClient(create_app(tmp_path, session=session))
+    session.import_file(tone(tmp_path / "u.m4a"), "lezione.m4a", "it")
+    st = wait_for(session, "error")
+    assert st["state"] == "error" and st["preview"] is None
+    assert client.get("/api/recordings/lezione").status_code == 404

@@ -193,3 +193,70 @@ def test_transcribe_recording_merges_close_segments(tmp_path):
 
     json_path, _ = recorder.transcribe_recording(rec, Fragmented())
     assert [s.text for s in Transcript.load(json_path).segments] == ["ciao a tutti", "dopo"]
+
+
+@requires_ffmpeg
+def test_preview_comes_after_whisper_and_again_with_the_doubts(tmp_path, monkeypatch):
+    """Decision 0031: the text after Whisper, the doubts before the voices, never changed later."""
+    monkeypatch.setattr(recorder, "_speaker_models", lambda: True)
+    monkeypatch.setattr("parola.diarize.diarize", lambda path, progress=None: [(0.0, 1.0, 0)])
+    _write(tmp_path / "c.mixed.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+
+    class Second:
+        name, model = "second", "m"
+
+        def transcribe(self, wav_path, language=None):
+            return ASRResult(segments=[seg(0, 1, "canale due")], language="it")
+
+    seen = []
+    json_path, _ = recorder.transcribe_recording(
+        rec, FakeBackend(), second=Second(), preview=lambda stage, t: seen.append((stage, t))
+    )
+    assert [stage for stage, _ in seen] == ["transcript", "doubts"]
+    first, doubts = seen[0][1], seen[1][1]
+    assert not any(w.doubtful for s in first.segments for w in s.words)  # a copy: not marked later
+    assert [w.doubtful for s in doubts.segments for w in s.words] == [False, True]
+    assert all(s.speaker is None for s in [*first.segments, *doubts.segments])
+    assert [s.speaker for s in Transcript.load(json_path).segments] == ["mixed:1"]
+
+
+@requires_ffmpeg
+def test_no_doubts_stage_when_nothing_follows(tmp_path, monkeypatch):
+    # Without voices the final transcript comes right after the doubts: no stage in between.
+    monkeypatch.setattr(recorder, "_speaker_models", lambda: False)
+    _write(tmp_path / "c.mixed.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+    seen = []
+    recorder.transcribe_recording(rec, FakeBackend(), second=FakeBackend(),
+                                  preview=lambda stage, t: seen.append(stage))  # fmt: skip
+    assert seen == ["transcript"]
+
+
+@requires_ffmpeg
+def test_whisper_runs_on_both_sides_before_the_second_opinion(tmp_path, monkeypatch):
+    monkeypatch.setattr(recorder, "_speaker_models", lambda: False)
+    for c in ("mic", "system"):
+        _write(tmp_path / f"c.{c}.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mic": {"seconds": 1.0}, "system": {"seconds": 1.0}})
+    order = []
+
+    class Logged(FakeBackend):
+        def __init__(self, label):
+            super().__init__()
+            self.label = label
+
+        def transcribe(self, wav_path, language=None):
+            order.append((self.label, Path(wav_path).name))
+            return super().transcribe(wav_path, language)
+
+    seen = []
+
+    def preview(stage, t):
+        seen.append((len(order), t))
+
+    whisper, parakeet = Logged("whisper"), Logged("parakeet")
+    recorder.transcribe_recording(rec, whisper, second=parakeet, preview=preview)
+    assert [label for label, _ in order] == ["whisper", "whisper", "parakeet", "parakeet"]
+    assert seen[0][0] == 2  # shown after the two Whisper runs
+    assert {s.channel for s in seen[0][1].segments} == {"mic", "system"}

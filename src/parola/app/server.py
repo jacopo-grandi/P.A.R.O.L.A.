@@ -51,8 +51,8 @@ def _check(name: str) -> str:
     return name
 
 
-def summary(folder: Path, name: str) -> dict:
-    t = Transcript.load(folder / f"{name}.json")
+def summary(folder: Path, name: str, t: Transcript | None = None) -> dict:
+    t = t or Transcript.load(folder / f"{name}.json")
     words = [w for s in t.segments for w in s.words]
     capture_path = folder / f"{name}.capture.json"
     capture = json.loads(capture_path.read_text()) if capture_path.exists() else {}
@@ -273,10 +273,19 @@ def create_app(folder: Path, session: RecordingSession | None = None,
     def get_recording(name: str) -> dict:
         name = _check(name)
         path = folder / f"{name}.json"
-        if not path.exists():
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["summary"] = summary(folder, name)
+            data["provisional"] = None
+        elif preview := session.provisional(name):
+            # Still being transcribed: the text so far, read-only (decision 0031). The edit
+            # endpoints read the file on disk, which does not exist yet.
+            stage, t = preview
+            data = json.loads(t.to_json())
+            data["summary"] = summary(folder, name, t)
+            data["provisional"] = stage
+        else:
             raise HTTPException(status_code=404, detail="no such recording")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        data["summary"] = summary(folder, name)
         t = Transcript.model_validate(data)
         ids = sorted({sg.speaker for sg in t.segments if sg.speaker},
                      key=lambda v: (v.split(":")[0], int(v.split(":")[1])))  # fmt: skip
