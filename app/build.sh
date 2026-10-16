@@ -46,7 +46,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.2</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>P.A.R.O.L.A. registra il tuo microfono per trascrivere in locale la tua parte della call.</string>

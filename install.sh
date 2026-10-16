@@ -40,9 +40,24 @@ export PATH
 step "Checking this Mac"
 [ "$(uname -s)" = Darwin ] || fail "P.A.R.O.L.A. runs on macOS only."
 [ "$(uname -m)" = arm64 ] || fail "P.A.R.O.L.A. needs an Apple Silicon Mac (M1 or later)."
-major=$(sw_vers -productVersion | cut -d. -f1)
-[ "$major" -ge 14 ] || fail "macOS 14 Sonoma or later is needed (this is $(sw_vers -productVersion))."
-ok "macOS $(sw_vers -productVersion) on Apple Silicon"
+# Recording system audio uses Core Audio process taps, which came with macOS 14.2.
+release=$(sw_vers -productVersion)
+major=$(echo "$release" | cut -d. -f1)
+minor=$(echo "$release" | cut -d. -f2)
+if [ "$major" -lt 14 ] || { [ "$major" -eq 14 ] && [ "${minor:-0}" -lt 2 ]; }; then
+    fail "macOS 14.2 or later is needed to record calls (this is $release): update macOS first."
+fi
+ok "macOS $release on Apple Silicon"
+
+# A transcription peaks at about 6 GB: fine on 16 GB, tight on 8 GB.
+memory=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+if [ "$memory" -lt 16 ]; then
+    printf '    \033[33mnote:\033[0m this Mac has %s GB of memory. A transcription uses about 6 GB at its\n' "$memory"
+    echo "          peak: close other apps while it runs (the call is over by then), and expect it"
+    echo "          to be slower than on 16 GB."
+else
+    ok "$memory GB of memory"
+fi
 
 step "Checking the tools"
 if xcode-select -p >/dev/null 2>&1 && command -v swift >/dev/null 2>&1; then

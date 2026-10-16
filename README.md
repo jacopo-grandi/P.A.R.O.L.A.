@@ -49,7 +49,7 @@ them only when you agree. A file you import is asked its language.
 
 ## Install the app
 
-On an Apple Silicon Mac with macOS 14 or later:
+On an Apple Silicon Mac with macOS 14.2 or later:
 
 1. **Install.** In Terminal:
 

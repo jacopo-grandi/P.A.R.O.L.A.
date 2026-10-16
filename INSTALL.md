@@ -6,9 +6,10 @@ the tools, the Python packages and, once, the speech models.
 
 ## What you need
 
-- A Mac with Apple Silicon (M1 or later) and macOS 14 Sonoma or later.
+- A Mac with Apple Silicon (M1 or later) and macOS 14.2 Sonoma or later.
 - About 6 GB of free space: 4.2 GB of speech models, the rest for the app and its packages.
-- 16 GB of memory is comfortable; a transcription uses about 6 GB at its peak.
+- 16 GB of memory is comfortable; a transcription uses about 6 GB at its peak, so on 8 GB
+  close other apps while it runs (`install.sh` says so).
 - [Homebrew](https://brew.sh), if `uv` or `ffmpeg` are not installed yet.
 
 ## Install it yourself
@@ -89,7 +90,7 @@ shows its last warnings and errors.
 You are installing P.A.R.O.L.A. for the person you are working with, on their Mac. Follow these
 steps in order and report back in their language.
 
-1. **Check** that this is macOS 14 or later on Apple Silicon (`sw_vers`, `uname -m` = `arm64`).
+1. **Check** that this is macOS 14.2 or later on Apple Silicon (`sw_vers`, `uname -m` = `arm64`).
    If not, stop and say why it cannot be installed.
 2. **Clone** the repository, unless it is already there (then `git pull` in it):
    `git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git ~/P.A.R.O.L.A.`

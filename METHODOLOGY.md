@@ -193,6 +193,10 @@ the participants' consent, the pairs are training data for the fine-tuning that 
   virtual audio driver is needed.
 - **Echo:** a microphone segment whose words are mostly the same as the other channel's at the
   same time (60% or more) is your speakers leaking into the microphone, and is dropped.
+- **Device changes:** headphones plugged in or out, or AirPods dropping from 48 to 24 kHz when
+  their microphone starts, restart that side on the device in use. The files keep the format
+  they started with (the new audio is converted) and the restart's moments are filled with
+  silence, so the two files stay aligned with each other and with the clock.
 - **Voice activity detection:** only stretches with sound are transcribed, to keep Whisper from
   inventing text over silence. Fidelity is unchanged: 5.1 with and without VAD
   ([report](results/2026-10-15-vad.md)). Earlier versions that shifted decoding windows lost
@@ -340,6 +344,9 @@ CC BY-SA 4.0).
   On en-001, a lecture, the voices alternate as if there were two speakers; not checked yet.
 - **Language on four files.** The 5-window detection is checked on four recordings, none of them
   mixed Italian and English.
+- **Device changes untried on real hardware.** The conversion and the silence filling are
+  checked in a test (24 kHz mono audio into a 48 kHz stereo file: right pitch, level and
+  length); the restarts themselves still have to be tried with AirPods during a real call.
 - **One machine.** Times and memory are measured on an M4 Pro with 24 GB. Macs with 8 GB and
   Windows are not covered.
 - **Playback precision.** Seeking in WebKit was measured with Web Audio inside the page, which
