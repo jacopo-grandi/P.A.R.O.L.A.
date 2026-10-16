@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from ilat import editing
 from ilat.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
+from ilat.capture.session import RecordingSession, SessionError
 from ilat.schema import Transcript, format_timestamp
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -50,6 +51,13 @@ def summary(folder: Path, name: str) -> dict:
     }
 
 
+class RecordRequest(BaseModel):
+    name: str | None = None
+    lang: str | None = None
+    mic: bool = True
+    system: bool = True
+
+
 class Span(BaseModel):
     segment: int
     start: int
@@ -78,8 +86,36 @@ def to_markdown(t: Transcript, name: str) -> str:
     return "\n".join(lines)
 
 
-def create_app(folder: Path) -> FastAPI:
-    app = FastAPI(title="ilat", docs_url=None, redoc_url=None, openapi_url=None)
+def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI:
+    from contextlib import asynccontextmanager
+
+    session = session or RecordingSession(folder)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield
+        session.abort()  # never leave the capture helper running
+
+    app = FastAPI(title="ilat", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+
+    @app.get("/api/record/status")
+    def record_status() -> dict:
+        return session.status()
+
+    @app.post("/api/record/start")
+    def record_start(req: RecordRequest) -> dict:
+        lang = req.lang if req.lang in ("it", "en") else None
+        try:
+            return session.start(req.name or None, lang, req.mic, req.system)
+        except SessionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    @app.post("/api/record/stop")
+    def record_stop() -> dict:
+        try:
+            return session.stop()
+        except SessionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:

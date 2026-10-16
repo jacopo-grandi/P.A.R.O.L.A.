@@ -285,6 +285,88 @@ async function showRecording(name) {
   await render(data);
 }
 
+// ---------------------------------------------------------------- recording from the app
+
+const recbar = document.getElementById("recbar");
+let recState = null;
+let recTimer = null;
+
+function meter(label, db) {
+  // -60 dBFS (empty) .. 0 dBFS (full)
+  const v = db === undefined ? 0 : Math.max(0, Math.min(1, (db + 60) / 60));
+  const bar = el("span", { class: "meter" }, el("span", { class: "fill" }));
+  bar.firstChild.style.width = `${Math.round(v * 100)}%`;
+  bar.classList.toggle("silent", db !== undefined && db <= -60);
+  return el("span", { class: "lvl" }, label, " ", bar);
+}
+
+async function recPost(action, body) {
+  const r = await fetch(`/api/record/${action}`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.detail || r.status);
+  return data;
+}
+
+function renderRecbar(st) {
+  const prev = recState;
+  recState = st;
+  if (st.state === "recording") {
+    const lv = st.levels || {};
+    recbar.replaceChildren(
+      el("span", { class: "dot" }), el("span", { class: "timer" }, clock(st.elapsed)),
+      "mic" in lv ? meter("Io", lv.mic) : "", "system" in lv ? meter("Altri", lv.system) : "",
+      el("button", { class: "stop", onclick: async () => {
+        try { renderRecbar(await recPost("stop")); pollRecording(); } catch (e) { alert(e.message); }
+      } }, "■ Ferma"));
+    return;
+  }
+  if (st.state === "transcribing") {
+    const [done, total] = st.step || [0, 0];
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    recbar.replaceChildren(el("span", { class: "busy" },
+      `${st.message || "trascrizione"}… ${pct}%`));
+    return;
+  }
+  const lang = el("select", { title: "lingua della call" },
+    el("option", { value: "" }, "lingua: auto"), el("option", { value: "it" }, "italiano"),
+    el("option", { value: "en" }, "inglese"));
+  const mic = el("input", { type: "checkbox", checked: "" });
+  const start = el("button", { class: "rec", onclick: async () => {
+    try {
+      renderRecbar(await recPost("start", { lang: lang.value || null, mic: mic.checked }));
+      pollRecording();
+    } catch (e) { alert(e.message); }
+  } }, "● Registra");
+  const extra = [];
+  if (st.state === "done" && st.name) {
+    extra.push(el("a", { class: "btn", href: `#/rec/${encodeURIComponent(st.name)}` },
+      `apri ${st.name}`));
+  } else if (st.state === "error") {
+    extra.push(el("span", { class: "err", title: st.message }, `errore: ${st.message}`));
+  }
+  recbar.replaceChildren(...extra, lang, el("label", { class: "toggle" }, mic, " microfono"), start);
+  if (prev && prev.state === "transcribing" && st.state === "done" && !location.hash.startsWith("#/rec/")) {
+    route();  // refresh the list with the new call
+  }
+}
+
+async function pollRecording() {
+  try {
+    renderRecbarIfChanged(await getJSON("/api/record/status"));
+  } catch (e) { /* server restarting */ }
+  const active = recState && ["recording", "transcribing"].includes(recState.state);
+  clearTimeout(recTimer);
+  recTimer = setTimeout(pollRecording, active ? 250 : 3000);
+}
+
+function renderRecbarIfChanged(st) {
+  // Re-render the idle controls only when the state changes, so the selects keep their value.
+  const idle = !["recording", "transcribing"].includes(st.state);
+  if (idle && recState && recState.state === st.state && recState.name === st.name) return;
+  renderRecbar(st);
+}
+
 // ---------------------------------------------------------------- routing and keys
 
 async function route() {
@@ -312,3 +394,4 @@ document.addEventListener("keydown", async e => {
 
 window.addEventListener("hashchange", route);
 route();
+pollRecording();

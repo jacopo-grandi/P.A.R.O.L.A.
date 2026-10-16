@@ -52,6 +52,11 @@ goes over the network.
 uv run ilat serve                        # http://127.0.0.1:8765, local only
 ```
 
+The **● Registra** button in the header records a call without the terminal: timer, live levels
+for both sides (an empty "Altri" meter means system audio is not reaching the app: check the
+permission), then **■ Ferma** transcribes in the background and links to the call when ready.
+Run `ilat serve` from the same app you granted the audio permissions to (e.g. Terminal).
+
 Lists the recorded calls; in a call, doubtful words are highlighted and a click on a word plays
 the audio of that side from there. N opens the next doubtful word (it plays and becomes editable):
 Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click

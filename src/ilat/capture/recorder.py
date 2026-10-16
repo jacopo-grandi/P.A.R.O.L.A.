@@ -217,7 +217,8 @@ def mark_doubts(primary: Transcript, second: Transcript) -> int:
 
 
 def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | None = None,
-                         second: ASRBackend | None = None) -> tuple[Path, Path]:  # fmt: skip
+                         second: ASRBackend | None = None,
+                         progress=None) -> tuple[Path, Path]:  # fmt: skip
     """Transcribe each channel and write <name>.json and <name>.txt next to the audio.
 
     With ``second``, each channel is also transcribed by a second system and the words of the
@@ -238,13 +239,24 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         with_speech.append(c)
     if not with_speech:
         raise CaptureError("every channel is silent: nothing to transcribe")
+    total_steps = len(with_speech) * (2 if second is not None else 1)
+    done = 0
+
+    def step(message: str) -> None:
+        if progress is not None:
+            progress(message, done, total_steps)
+
     for channel in with_speech:
         work = rec.out_dir / f".{rec.name}.{channel}"
+        step(f"trascrizione {LABELS[channel]}")
         out = transcribe_file(rec.path(channel), backend, out_dir=work, language=language)
+        done += 1
         parts[channel] = out.transcript
         if second is not None:
+            step(f"parole dubbie {LABELS[channel]}")
             other = transcribe_file(rec.path(channel), second, out_dir=work / "second",
                                     language=language).transcript  # fmt: skip
+            done += 1
             n = mark_doubts(parts[channel], other)
             total = sum(len(seg.words) for seg in parts[channel].segments)
             print(f"{channel}: {n} doubtful words out of {total}", file=sys.stderr)

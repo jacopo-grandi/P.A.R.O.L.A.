@@ -1,10 +1,13 @@
 // ilat-capture: record the microphone and the system audio of a call into two WAV files.
 //
 //   ilat-capture --out-dir DIR --name NAME [--duration SECONDS] [--no-mic] [--no-system]
+//                [--levels]
 //
 // Writes DIR/NAME.mic.wav (microphone), DIR/NAME.system.wav (system audio, through a Core Audio
 // process tap: no virtual driver needed, the audio keeps playing) and DIR/NAME.capture.json.
 // Stops after --duration, or on SIGINT / SIGTERM. Requires macOS 14.2+ (decision 0013).
+// With --levels, prints the peak level of each track (dBFS) to stderr four times a second:
+//   LEVELS {"mic": -31.2, "system": -12.5}
 
 import AVFoundation
 import AudioToolbox
@@ -55,6 +58,7 @@ struct Options {
     var duration: Double?
     var mic = true
     var system = true
+    var levels = false
 }
 
 func parseOptions() -> Options {
@@ -73,8 +77,9 @@ func parseOptions() -> Options {
             o.duration = d
         case "--no-mic": o.mic = false
         case "--no-system": o.system = false
+        case "--levels": o.levels = true
         case "-h", "--help":
-            print("usage: ilat-capture --out-dir DIR --name NAME [--duration S] [--no-mic] [--no-system]")
+            print("usage: ilat-capture --out-dir DIR --name NAME [--duration S] [--no-mic] [--no-system] [--levels]")
             exit(0)
         default: fail("unknown argument \(arg)")
         }
@@ -89,6 +94,8 @@ final class Track {
     let file: AVAudioFile
     let format: AVAudioFormat
     var frames: Int64 = 0
+    // Peak absolute sample since the last LEVELS line (read and reset on the main queue).
+    var peak: Float = 0
 
     init(url: URL, format: AVAudioFormat) throws {
         self.format = format
@@ -98,6 +105,16 @@ final class Track {
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
+        if let data = buffer.floatChannelData {
+            let interleaved = buffer.format.isInterleaved
+            let channels = Int(buffer.format.channelCount)
+            let n = Int(buffer.frameLength) * (interleaved ? channels : 1)
+            var p = peak
+            for c in 0..<(interleaved ? 1 : channels) {
+                for i in 0..<n { p = max(p, abs(data[c][i])) }
+            }
+            peak = p
+        }
         do {
             try file.write(from: buffer)
             frames += Int64(buffer.frameLength)
@@ -231,6 +248,22 @@ do {
     fail("could not start: \(error)")
 }
 log("ilat-capture: recording (stop with Ctrl-C)")
+
+func dbfs(_ peak: Float) -> Double { peak > 0 ? max(-90, 20 * log10(Double(peak))) : -90 }
+
+let levelTimer = DispatchSource.makeTimerSource(queue: .main)
+if options.levels {
+    levelTimer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+    levelTimer.setEventHandler {
+        var parts: [String] = []
+        if let t = mic.track { parts.append("\"mic\": \(String(format: "%.1f", dbfs(t.peak)))"); t.peak = 0 }
+        if let t = system.track {
+            parts.append("\"system\": \(String(format: "%.1f", dbfs(t.peak)))"); t.peak = 0
+        }
+        log("LEVELS {" + parts.joined(separator: ", ") + "}")
+    }
+    levelTimer.resume()
+}
 
 func finish() -> Never {
     if options.mic { mic.stop() }
