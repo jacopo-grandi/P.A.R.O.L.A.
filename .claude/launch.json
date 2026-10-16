@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ilat-serve",
+      "runtimeExecutable": ".venv/bin/ilat",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8765"
+      ],
+      "port": 8765
+    }
+  ]
+}

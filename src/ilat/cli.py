@@ -2,6 +2,7 @@
 
 ilat transcribe <file>              audio/video -> <name>.json + <name>.txt
 ilat record                         record a call (mic + system audio) and transcribe it
+ilat serve                          local web UI for the recorded calls
 ilat validate <transcript.json>     check a reference against docs/conventions.md
 ilat annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 ilat annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -85,6 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="turbo (default, MIT) or crisper (CrisperWhisper 2.0: non-commercial use only, "
         "needs `uv sync --group baselines`)",
     )
+
+    sv = sub.add_parser("serve", help="local web UI for the recorded calls")
+    sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
+                    help="folder with the recordings (default: data/private/calls)")  # fmt: skip
+    sv.add_argument("--port", type=int, default=8765)
 
     v = sub.add_parser("validate", help="check a reference transcript against the conventions")
     v.add_argument("file", type=Path)
@@ -220,6 +226,20 @@ def cmd_record(args) -> int:
     return main_record(args.out, args.name, make_engine(args.engine), language,
                        args.duration, not args.no_mic, not args.no_system,
                        second=second)  # fmt: skip
+
+
+def cmd_serve(args) -> int:
+    import uvicorn
+
+    from ilat.app.server import create_app
+
+    if not args.dir.is_dir():
+        print(f"error: {args.dir} does not exist", file=sys.stderr)
+        return 1
+    print(f"ilat: http://127.0.0.1:{args.port} (Ctrl-C to stop)", file=sys.stderr)
+    # Bound to localhost only: the recordings never leave this machine.
+    uvicorn.run(create_app(args.dir), host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
 
 
 def cmd_validate(args) -> int:
@@ -470,6 +490,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         ("transcribe", None): cmd_transcribe,
         ("record", None): cmd_record,
+        ("serve", None): cmd_serve,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,

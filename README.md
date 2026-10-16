@@ -46,6 +46,16 @@ transcription (Parakeet v3) does not confirm as `(doubtful?)` in the text. The f
 the microphone and system-audio recording permissions. Once the models are downloaded, nothing
 goes over the network.
 
+### Reading the transcripts
+
+```bash
+uv run ilat serve                        # http://127.0.0.1:8765, local only
+```
+
+Lists the recorded calls; in a call, doubtful words are highlighted, a click on a word plays the
+audio of that side from there, N / P jump to the next / previous doubtful word, and the transcript
+can be exported as txt, md or json.
+
 ### Writing reference transcripts
 
 ```bash
