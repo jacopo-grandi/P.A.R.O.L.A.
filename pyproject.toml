@@ -15,6 +15,7 @@ dependencies = [
     "numpy>=2",
     "parakeet-mlx>=0.5.3",
     "pydantic>=2.7",
+    "python-docx>=1.2.0",
     "uvicorn>=0.54.0",
 ]
 

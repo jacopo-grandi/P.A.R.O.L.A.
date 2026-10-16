@@ -65,6 +65,11 @@ async function showList() {
 
 // ---------------------------------------------------------------- recording
 
+let rec = null;      // recording being shown
+let recName = null;
+let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
+let editing = null;  // {seg, start, end}
+
 function play(word) {
   const p = players[word.channel];
   if (!p) return;
@@ -91,52 +96,102 @@ function follow(channel) {
   if (w && w.el !== current) mark(w.el);
 }
 
-function jump(direction) {
-  // In time order: segments of the two channels interleave and overlap.
-  const doubts = words.filter(w => w.doubtful).sort((a, b) => a.start - b.start);
-  if (!doubts.length) return;
-  const at = current ? words.findIndex(w => w.el === current) : -1;
-  const pos = at < 0 ? -1 : words[at].start;
-  const next = direction > 0 ? doubts.find(w => w.start > pos + 0.01)
-                             : [...doubts].reverse().find(w => w.start < pos - 0.01);
-  const target = next || (direction > 0 ? doubts[0] : doubts[doubts.length - 1]);
-  target.el.scrollIntoView({ block: "center", behavior: "smooth" });
-  play(target);
+async function post(action, body) {
+  const r = await fetch(`/api/recordings/${encodeURIComponent(recName)}/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail || r.status);
+  return r.json();
 }
 
-async function showRecording(name) {
-  stopAll();
-  const rec = await getJSON(`/api/recordings/${encodeURIComponent(name)}`);
-  players = {};
-  audioBox.replaceChildren();
-  for (const [channel, url] of Object.entries(rec.audio)) {
-    const a = el("audio", { preload: "metadata", src: url });
-    a.addEventListener("timeupdate", () => follow(channel));
-    players[channel] = a;
-    audioBox.append(a);
-  }
+function wordAt(seg, k) {
+  return words.find(w => w.seg === seg && w.k === k);
+}
+
+function openEditor(seg, start, end, autoplay) {
+  closeEditor();
+  const first = wordAt(seg, start);
+  if (!first) return;
+  editing = { seg, start, end };
+  const text = rec.segments[seg].words.slice(start, end).map(w => w.text).join(" ");
+  const input = el("input", { class: "edit", value: text, size: Math.max(8, text.length + 2),
+                              title: "Invio: salva (senza modifiche: conferma) · Esc: annulla" });
+  first.el.before(input);
+  for (let k = start; k < end; k++) wordAt(seg, k).el.classList.add("editing");
+  input.addEventListener("keydown", async e => {
+    if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const after = await post("correct", { segment: seg, start, end, text: input.value });
+      await render(after, { seg, start, auto: true });
+    } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); play(first); }
+  });
+  input.focus();
+  input.select();
+  first.el.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (autoplay) play(first);
+}
+
+function closeEditor() {
+  document.querySelectorAll("input.edit").forEach(i => i.remove());
+  document.querySelectorAll(".editing").forEach(e => e.classList.remove("editing"));
+  editing = null;
+}
+
+function nextRun(direction, from) {
+  if (!runs.length) return null;
+  const pos = from ?? (current ? (words.find(w => w.el === current) || {}).start ?? -1 : -1);
+  const ordered = [...runs].sort((a, b) => a.t - b.t);
+  const found = direction > 0 ? ordered.find(r => r.t > pos + 0.01)
+                              : [...ordered].reverse().find(r => r.t < pos - 0.01);
+  return found || (direction > 0 ? ordered[0] : ordered[ordered.length - 1]);
+}
+
+function jump(direction) {
+  const r = nextRun(direction);
+  if (r) openEditor(r.seg, r.start, r.end, true);
+}
+
+async function render(data, after) {
+  rec = data;
   words = [];
+  runs = [];
   current = null;
+  editing = null;
   const body = el("div", { class: "transcript" });
-  for (const seg of rec.segments) {
+  rec.segments.forEach((seg, si) => {
     const channel = seg.channel || "mic";
     const text = el("div", { class: "text" });
     const list = seg.words.length ? seg.words : [{ text: seg.text, start: seg.start, end: seg.end }];
     list.forEach((w, k) => {
       const start = w.start ?? seg.start, end = w.end ?? seg.end;
-      const span = el("span", { class: "w" + (w.doubtful ? " doubt" : "") }, w.text);
-      if (w.doubtful) span.title = "parola dubbia: la seconda trascrizione dice altro";
-      const word = { el: span, channel, start, end, doubtful: !!w.doubtful };
+      const cls = "w" + (w.doubtful ? " doubt" : "") + (w.checked ? " checked" : "");
+      const span = el("span", { class: cls }, w.text);
+      if (w.doubtful) span.title = "parola dubbia: la seconda trascrizione dice altro (N per rivederla)";
+      else if (w.checked) span.title = "verificata da te";
+      const word = { el: span, channel, start, end, doubtful: !!w.doubtful, seg: si, k };
       span.addEventListener("click", () => play(word));
+      span.addEventListener("dblclick", e => {
+        e.preventDefault();
+        const run = runs.find(r => r.seg === si && r.start <= k && k < r.end);
+        if (run) openEditor(si, run.start, run.end, true);
+        else openEditor(si, k, k + 1, true);
+      });
       words.push(word);
       text.append(span, k < list.length - 1 ? " " : "");
+      if (w.doubtful && !(k > 0 && list[k - 1].doubtful)) {
+        let e = k;
+        while (e < list.length && list[e].doubtful) e++;
+        runs.push({ seg: si, start: k, end: e, t: start, channel });
+      }
     });
     const first = words[words.length - list.length];
     body.append(el("div", { class: `seg ${channel}`, "data-doubt": seg.words.some(w => w.doubtful) },
       el("span", { class: "time", onclick: () => play(first) }, clock(seg.start)),
       el("span", { class: "who" }, LABELS[channel] || channel),
       text));
-  }
+  });
   const s = rec.summary;
   const onlyDoubts = el("input", { type: "checkbox" });
   onlyDoubts.addEventListener("change", () => {
@@ -144,25 +199,50 @@ async function showRecording(name) {
       row.classList.toggle("hidden", onlyDoubts.checked && row.dataset.doubt !== "true");
     }
   });
+  const exp = f => el("a", { class: "btn", href: `/export/${encodeURIComponent(recName)}.${f}` }, f);
   const bar = el("div", { class: "bar" },
     el("h1", {}, s.name),
-    el("button", { onclick: () => {
-      const p = current ? players[words.find(w => w.el === current).channel] : Object.values(players)[0];
-      if (p) (p.paused ? p.play() : p.pause());
-    } }, "▶︎ / ❚❚"),
-    el("button", { onclick: () => jump(-1) }, "← dubbia"),
-    el("button", { onclick: () => jump(1) }, "dubbia →"),
+    el("span", { class: "todo" }, runs.length ? `${runs.length} da rivedere` : "tutto rivisto ✓"),
+    el("button", { onclick: () => jump(-1) }, "← P"),
+    el("button", { onclick: () => jump(1) }, "N →"),
+    el("button", { onclick: async () => {
+      try { await render(await post("undo"), {}); } catch (e) { alert(e.message); }
+    } }, "annulla ⌘Z"),
     el("label", { class: "toggle" }, onlyDoubts, " solo righe con dubbi"),
-    el("a", { class: "btn", href: `/export/${encodeURIComponent(name)}.txt` }, "txt"),
-    el("a", { class: "btn", href: `/export/${encodeURIComponent(name)}.md` }, "md"),
-    el("a", { class: "btn", href: `/export/${encodeURIComponent(name)}.json` }, "json"),
+    exp("txt"), exp("md"), exp("docx"), exp("json"),
+    el("button", { onclick: () => window.print() }, "PDF"),
     el("a", { class: "btn", href: "#/" }, "elenco"));
   const help = el("p", { class: "help" },
-    `${clock(s.duration)} · ${s.words} parole · ${s.doubtful} dubbie (evidenziate: la seconda ` +
-    "trascrizione non le conferma). Clic su una parola per ascoltare da lì. Tasti: spazio " +
-    "play/pausa, N dubbia successiva, P precedente.");
+    `${clock(s.duration)} · ${s.words} parole · ${s.doubtful} dubbie · ${s.checked} verificate. ` +
+    "Clic su una parola: ascolta da lì. N: prossima dubbia (si ascolta e si apre in modifica), " +
+    "Invio salva (senza modifiche la conferma) e passa alla successiva, Esc annulla, " +
+    "doppio clic: modifica qualsiasi parola, ⌘Z: annulla l'ultima modifica, spazio: play/pausa.");
+  const y = window.scrollY;
   main.replaceChildren(bar, help, body);
-  window.scrollTo(0, 0);
+  if (after && after.seg !== undefined) {
+    window.scrollTo(0, y);
+    if (after.auto) {
+      const w = wordAt(after.seg, Math.min(after.start, rec.segments[after.seg].words.length - 1));
+      const from = w ? w.start - 0.02 : undefined;
+      const r = nextRun(1, from);
+      if (r) openEditor(r.seg, r.start, r.end, true);
+    }
+  } else if (!after) window.scrollTo(0, 0);
+}
+
+async function showRecording(name) {
+  stopAll();
+  recName = name;
+  const data = await getJSON(`/api/recordings/${encodeURIComponent(name)}`);
+  players = {};
+  audioBox.replaceChildren();
+  for (const [channel, url] of Object.entries(data.audio)) {
+    const a = el("audio", { preload: "metadata", src: url });
+    a.addEventListener("timeupdate", () => follow(channel));
+    players[channel] = a;
+    audioBox.append(a);
+  }
+  await render(data);
 }
 
 // ---------------------------------------------------------------- routing and keys
@@ -177,16 +257,20 @@ async function route() {
   }
 }
 
-document.addEventListener("keydown", e => {
+document.addEventListener("keydown", async e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
   if (!Object.keys(players).length) return;
   if (e.key === " ") {
     e.preventDefault();
-    const channel = current ? words.find(w => w.el === current).channel : Object.keys(players)[0];
-    const p = players[channel];
+    const w = current && words.find(w => w.el === current);
+    const p = players[w ? w.channel : Object.keys(players)[0]];
     p.paused ? p.play() : p.pause();
-  } else if (e.key === "n" || e.key === "N") jump(1);
-  else if (e.key === "p" || e.key === "P") jump(-1);
+  } else if (e.key === "n" || e.key === "N") { e.preventDefault(); jump(1); }
+  else if (e.key === "p" || e.key === "P") { e.preventDefault(); jump(-1); }
+  else if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+    e.preventDefault();
+    try { await render(await post("undo"), {}); } catch (err) { /* nothing to undo */ }
+  }
 });
 
 window.addEventListener("hashchange", route);

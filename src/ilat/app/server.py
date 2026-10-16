@@ -15,7 +15,9 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+from ilat import editing
 from ilat.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from ilat.schema import Transcript, format_timestamp
 
@@ -42,8 +44,17 @@ def summary(folder: Path, name: str) -> dict:
         "segments": len(t.segments),
         "words": len(words),
         "doubtful": sum(w.doubtful for w in words),
+        "checked": sum(w.checked for w in words),
+        "edits": len(t.edits),
         "model": t.metadata.model,
     }
+
+
+class Span(BaseModel):
+    segment: int
+    start: int
+    end: int
+    text: str | None = None
 
 
 def recordings(folder: Path) -> list[str]:
@@ -51,7 +62,7 @@ def recordings(folder: Path) -> list[str]:
     names = []
     for p in sorted(folder.glob("*.json")):
         name = p.stem
-        if name.endswith(".capture") or not _NAME.match(name):
+        if name.endswith((".capture", ".asr")) or not _NAME.match(name):
             continue
         if any((folder / f"{name}.{c}.wav").exists() for c in CHANNELS):
             names.append(name)
@@ -91,6 +102,43 @@ def create_app(folder: Path) -> FastAPI:
                          if (folder / f"{name}.{c}.wav").exists()}  # fmt: skip
         return data
 
+    def _load(name: str) -> tuple[Transcript, Path]:
+        name = _check(name)
+        path = folder / f"{name}.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="no such recording")
+        return Transcript.load(path), path
+
+    def _store(t: Transcript, path: Path, name: str) -> dict:
+        editing.save(t, path)
+        (folder / f"{name}.txt").write_text(to_dialogue(t), encoding="utf-8")
+        return get_recording(name)
+
+    @app.post("/api/recordings/{name}/correct")
+    def correct(name: str, span: Span) -> dict:
+        t, path = _load(name)
+        try:
+            editing.correct(t, span.segment, span.start, span.end, span.text or "")
+        except editing.EditError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return _store(t, path, name)
+
+    @app.post("/api/recordings/{name}/confirm")
+    def confirm(name: str, span: Span) -> dict:
+        t, path = _load(name)
+        try:
+            editing.confirm(t, span.segment, span.start, span.end)
+        except editing.EditError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return _store(t, path, name)
+
+    @app.post("/api/recordings/{name}/undo")
+    def undo(name: str) -> dict:
+        t, path = _load(name)
+        if editing.undo(t) is None:
+            raise HTTPException(status_code=400, detail="nothing to undo")
+        return _store(t, path, name)
+
     @app.get("/audio/{name}/{channel}")
     def audio(name: str, channel: str) -> FileResponse:
         name = _check(name)
@@ -103,12 +151,24 @@ def create_app(folder: Path) -> FastAPI:
     def export(name: str, fmt: str):
         name = _check(name)
         path = folder / f"{name}.json"
-        if not path.exists() or fmt not in ("txt", "md", "json"):
+        if not path.exists() or fmt not in ("txt", "md", "json", "docx"):
             raise HTTPException(status_code=404, detail="no such export")
         t = Transcript.load(path)
         headers = {"Content-Disposition": f'attachment; filename="{name}.{fmt}"'}
         if fmt == "json":
             return PlainTextResponse(t.to_json(), media_type="application/json", headers=headers)
+        if fmt == "docx":
+            from fastapi.responses import Response
+
+            from ilat.app.export import to_docx
+
+            return Response(
+                to_docx(t, name),
+                headers=headers,
+                media_type=(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+            )
         text = to_dialogue(t) if fmt == "txt" else to_markdown(t, name)
         return PlainTextResponse(text, media_type="text/plain; charset=utf-8", headers=headers)
 

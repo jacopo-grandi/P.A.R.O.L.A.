@@ -48,6 +48,8 @@ class Word(BaseModel):
     # ASR output only: a second transcription disagrees here, the word is worth checking
     # (ilat.doubt, decision 0014). Not a disfluency tag.
     doubtful: bool = False
+    # A person confirmed or wrote this word in the app (ilat.editing, decision 0015).
+    checked: bool = False
 
     @field_validator("text")
     @classmethod
@@ -99,10 +101,25 @@ class Metadata(BaseModel):
     ilat_version: str
 
 
+class Edit(BaseModel):
+    """One change made by a person in the app: words [start, start + len(before)) of a segment
+    were replaced by ``after_count`` words. ``before`` keeps the replaced words as they were, so
+    the model's original text stays traceable and the edit can be undone."""
+
+    kind: Literal["correct", "confirm"]
+    segment: int = Field(ge=0)
+    start: int = Field(ge=0)
+    before: list[Word]
+    after_count: int = Field(ge=0)
+    text: str
+    at: datetime
+
+
 class Transcript(BaseModel):
     schema_version: str = SCHEMA_VERSION
     metadata: Metadata
     segments: list[Segment] = Field(default_factory=list)
+    edits: list[Edit] = Field(default_factory=list)
 
     @field_validator("schema_version")
     @classmethod

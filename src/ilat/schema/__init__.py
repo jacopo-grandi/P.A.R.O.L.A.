@@ -3,6 +3,7 @@ from ilat.schema.render import format_timestamp, parse_timestamp, to_text
 from ilat.schema.transcript import (
     SCHEMA_VERSION,
     Channel,
+    Edit,
     Lang,
     Metadata,
     Segment,
@@ -16,6 +17,7 @@ __all__ = [
     "Channel",
     "CleanSentence",
     "CleanTranscript",
+    "Edit",
     "Lang",
     "Metadata",
     "Segment",

@@ -52,9 +52,11 @@ goes over the network.
 uv run ilat serve                        # http://127.0.0.1:8765, local only
 ```
 
-Lists the recorded calls; in a call, doubtful words are highlighted, a click on a word plays the
-audio of that side from there, N / P jump to the next / previous doubtful word, and the transcript
-can be exported as txt, md or json.
+Lists the recorded calls; in a call, doubtful words are highlighted and a click on a word plays
+the audio of that side from there. N opens the next doubtful word (it plays and becomes editable):
+Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click
+edits any word, Cmd-Z undoes. Every change is logged with the model's original text, which is also
+kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the browser's print.
 
 ### Writing reference transcripts
 

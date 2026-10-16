@@ -78,3 +78,39 @@ def test_exports(client):
 )
 def test_bad_paths_are_404(client, url):
     assert client.get(url).status_code == 404
+
+
+def test_correct_confirm_undo_endpoints(client, folder):
+    r = client.post("/api/recordings/call/correct",
+                    json={"segment": 0, "start": 2, "end": 3, "text": "tutto"})  # fmt: skip
+    assert r.status_code == 200
+    data = r.json()
+    assert data["segments"][0]["text"] == "ciao a tutto"
+    assert data["summary"]["doubtful"] == 0 and data["summary"]["edits"] == 1
+    assert (folder / "call.asr.json").exists()
+    assert "Io: ciao a tutto" in (folder / "call.txt").read_text()
+    r = client.post("/api/recordings/call/confirm", json={"segment": 1, "start": 0, "end": 1})
+    assert r.json()["summary"]["checked"] == 2
+    assert client.post("/api/recordings/call/undo").json()["summary"]["edits"] == 1
+    assert client.post("/api/recordings/call/undo").json()["segments"][0]["text"] == "ciao a tutti"
+    assert client.post("/api/recordings/call/undo").status_code == 400
+    assert (
+        client.post(
+            "/api/recordings/call/correct", json={"segment": 5, "start": 0, "end": 1, "text": "x"}
+        ).status_code
+        == 400
+    )
+    # The kept model output is not listed as a recording.
+    assert [r["name"] for r in client.get("/api/recordings").json()] == ["call"]
+
+
+def test_docx_export(client):
+    r = client.get("/export/call.docx")
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    from io import BytesIO
+
+    from docx import Document
+
+    doc = Document(BytesIO(r.content))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "ciao a tutti" in text and "buongiorno" in text
