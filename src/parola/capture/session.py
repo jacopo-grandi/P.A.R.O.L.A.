@@ -62,6 +62,7 @@ class RecordingSession:
         # The transcript so far while transcribing, with its stage (decision 0031): kept in
         # memory only, so nothing can edit it and nothing stale is left if the app stops.
         self._preview: tuple[str, Transcript] | None = None
+        self._revision = 0
 
     # ---------------------------------------------------------------- recording
 
@@ -153,6 +154,7 @@ class RecordingSession:
 
         def preview(stage: str, transcript: Transcript) -> None:
             self._preview = (stage, transcript)
+            self._revision += 1  # the app fetches the text again when this changes
 
         try:
             backend, second = self._backends()
@@ -249,6 +251,8 @@ class RecordingSession:
             "levels": {} if self.paused_at is not None else self.levels,
             "message": self.message,
             "step": list(self.step),
-            # "transcript" once Whisper is done, "doubts" with the doubtful words, else None.
+            # "partial" while Whisper works (decision 0033), "transcript" once it is done,
+            # "doubts" with the doubtful words, else None.
             "preview": preview[0] if preview else None,
+            "revision": self._revision,
         }

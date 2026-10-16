@@ -15,6 +15,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 from array import array
 from dataclasses import dataclass
@@ -238,6 +239,9 @@ def provisional(parts: dict[str, Transcript], audio_file: str, duration: float) 
     return merge_channels(copies, audio_file, duration)
 
 
+# The growing text while Whisper works is handed to the app at most this often, in seconds.
+PARTIAL_EVERY = 1.0
+
 # Share of the work of each step, in minutes per hour of audio, measured on en-001 (1 h, imported)
 # on 2026-10-16: Whisper 3:00, Parakeet 1:14, voices 3:23 (decision 0031).
 WEIGHTS = {"primary": 3.0, "second": 1.2, "speakers": 3.4}
@@ -282,19 +286,40 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     total_steps += len(voiced or []) * weights["speakers"]
     done = 0.0
 
-    def run(engine: ASRBackend, kind: str, path: Path, out_dir: Path, message: str) -> Transcript:
+    def run(engine: ASRBackend, kind: str, path: Path, out_dir: Path, message: str,
+            channel: str | None = None) -> Transcript:  # fmt: skip
         def report(share: float) -> None:
             if progress is not None:
                 progress(message, done + weights[kind] * share, total_steps)
 
+        last = 0.0
+
+        def grow(segments: list[Segment]) -> None:
+            # The text so far, while Whisper is still on this channel (decision 0033): at most
+            # once a second, the app does not need more.
+            nonlocal last
+            if preview is None or not segments or time.monotonic() - last < PARTIAL_EVERY:
+                return
+            last = time.monotonic()
+            so_far = Transcript(metadata=Metadata(audio_file=path.name,
+                                                  duration=rec.capture[channel]["seconds"],
+                                                  created_at=datetime.now(UTC),
+                                                  parola_version=__version__),
+                                segments=segments)  # fmt: skip
+            preview("partial", provisional({**parts, channel: so_far}, audio_file, duration))
+
         report(0.0)
         if hasattr(engine, "on_progress"):
             engine.on_progress = report
+        if channel is not None and hasattr(engine, "on_segments"):
+            engine.on_segments = grow
         try:
             return transcribe_file(path, engine, out_dir=out_dir, language=language).transcript
         finally:
             if hasattr(engine, "on_progress"):
                 engine.on_progress = None
+            if hasattr(engine, "on_segments"):
+                engine.on_segments = None
             # One engine in memory at a time: peak 4.7 GB instead of 8.8 for a call, same
             # time and the same transcript (decision 0027).
             release_models()
@@ -312,7 +337,7 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     side = {c: f" {LABELS[c]}" if LABELS[c] else "" for c in with_speech}
     for channel in with_speech:
         parts[channel] = run(backend, "primary", rec.path(channel), work[channel],
-                             f"trascrizione{side[channel]}")  # fmt: skip
+                             f"trascrizione{side[channel]}", channel=channel)  # fmt: skip
         done += weights["primary"]
     show("transcript")
     if second is not None:

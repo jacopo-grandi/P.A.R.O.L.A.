@@ -656,9 +656,12 @@ async function render(data, after) {
     // listened to, and is replaced by the final one, so nothing can be corrected yet.
     view.stage = el("span", { class: "stage" });
     body.prepend(el("p", { class: "hint provisional" },
-      rec.provisional === "doubts"
-        ? "Testo provvisorio con le parole dubbie: chi parla arriva tra poco. "
-        : "Testo provvisorio: parole dubbie e chi parla arrivano tra poco. ",
+      rec.provisional === "partial"
+        ? "Whisper sta ancora trascrivendo: il testo cresce man mano, poi arrivano parole " +
+          "dubbie e chi parla. "
+        : rec.provisional === "doubts"
+          ? "Testo provvisorio con le parole dubbie: chi parla arriva tra poco. "
+          : "Testo provvisorio: parole dubbie e chi parla arrivano tra poco. ",
       "Puoi leggerlo e ascoltarlo; le correzioni quando è pronto.", view.stage));
   } else if (runs.length) {
     body.prepend(el("p", { class: "hint" },
@@ -924,6 +927,25 @@ async function showRecording(name, data = null) {
   await render(data);
 }
 
+function showWaiting(name) {
+  // The call being transcribed, before Whisper is done: nothing to read yet, only how far it
+  // is (renderPending updates the line). The text replaces this page as soon as it exists.
+  stopAll();
+  find = null;
+  players = {};
+  $audio.replaceChildren();
+  rec = null;
+  recName = name;
+  view = { waiting: el("p", {}) };
+  renderCalls();
+  $main.replaceChildren(el("div", { class: "placeholder" },
+    el("h2", {}, recState.source ? recState.source.replace(/\.[^.]+$/, "") : name),
+    view.waiting,
+    el("p", {}, "Il testo compare qui appena Whisper ha finito; poi si aggiungono le parole " +
+                "dubbie e le voci.")));
+  renderPending();
+}
+
 function showEmpty() {
   stopAll();
   players = {};
@@ -1054,6 +1076,9 @@ function renderPending() {
       recState.state === "error") {
     view.stage.textContent = " La trascrizione si è fermata: questo testo non è stato salvato.";
   }
+  if (view.waiting && recName === recState.name && recState.state === "error") {
+    view.waiting.textContent = `La trascrizione si è fermata: ${recState.message}`;
+  }
   if (uploading) {
     title = uploading.name;
     pct = uploading.pct;
@@ -1082,9 +1107,12 @@ function renderPending() {
   pendingView.title.textContent = title;
   pendingView.text.textContent = text;
   pendingView.bar.style.width = `${pct}%`;
-  if (preview) pendingView.row.href = `#/rec/${enc(recState.name)}`;
+  // Clickable from the start: before Whisper is done it opens a page that says how far it is.
+  const name = !uploading && recState.state === "transcribing" && recState.name;
+  if (name) pendingView.row.href = `#/rec/${enc(name)}`;
   else pendingView.row.removeAttribute("href");
-  pendingView.row.classList.toggle("active", !!preview && recName === recState.name);
+  pendingView.row.classList.toggle("active", !!name && recName === name);
+  if (view.waiting && recName === recState.name) view.waiting.textContent = text;
   if (view.stage && rec && rec.provisional && recName === recState.name) {
     view.stage.textContent = ` ${text}`;
   }
@@ -1096,7 +1124,26 @@ async function refreshShown(final) {
   let data;
   try { data = await getJSON(`/api/recordings/${enc(name)}`); } catch (e) { return; }
   if (recName !== name) return;  // another call was opened meanwhile
-  if (!final) { await render(data, {}); return; }  // same audio: only the text changes
+  if (!final) {
+    // Same audio: only the text changes. While Whisper works it grows (decision 0033): the new
+    // words fade in, and the view follows the end if that is where the person is reading.
+    const box = view.scroll;
+    const atEnd = box && box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    const scrollY = box ? box.scrollTop : 0;
+    const before = words.length;
+    await render(data, {});
+    if (view.scroll) view.scroll.scrollTop = scrollY;
+    if (before && words.length > before) {
+      words.slice(before).forEach((w, i) => {
+        w.el.classList.add("fresh");
+        w.el.style.animationDelay = `${Math.min(i * 12, 900)}ms`;
+      });
+      if (atEnd && Date.now() - scrolledByHand > FOLLOW_PAUSE) {
+        view.scroll.scrollTo({ top: view.scroll.scrollHeight, behavior: "smooth" });
+      }
+    }
+    return;
+  }
   // The final transcript: editable, and the audio is now FLAC (decision 0024), so new players,
   // at the same point.
   const p = lastChannel && players[lastChannel];
@@ -1118,9 +1165,13 @@ function setRecState(st) {
   recState = st;
   recAt = Date.now();
   renderRecorder();
-  if (st.state === "transcribing" && st.preview && st.preview !== prev.preview && st.name) {
+  if (st.state === "transcribing" && st.preview && st.name &&
+      (st.preview !== prev.preview || st.revision !== prev.revision)) {
     // Whisper is done (decision 0031): the text shows up, then the doubtful words.
-    if (recName === st.name) refreshShown(false);
+    if (recName === st.name) {
+      if (rec) refreshShown(false);
+      else showRecording(st.name).catch(() => {});  // from the waiting page to the text
+    }
     else if (!prev.preview && (!rec || st.name === imported)) {
       imported = null;  // opened now: not again when it is done
       location.hash = `#/rec/${enc(st.name)}`;
@@ -1139,7 +1190,7 @@ function setRecState(st) {
 
 // ---------------------------------------------------------------- importing a file
 
-const $file = el("input", { type: "file", accept: "audio/*,video/*", hidden: true,
+const $file = el("input", { type: "file", accept: "audio/*,video/*,.qta", hidden: true,
                             onchange: e => { if (e.target.files[0]) importFile(e.target.files[0]); } });
 document.body.append($file);
 let uploading = null;   // {name, pct} while a file is being sent
@@ -1384,7 +1435,9 @@ async function route() {
       const name = decodeURIComponent(m[1]);
       const params = new URLSearchParams(m[2] || "");
       // Another hit in the call already open: no reload, the audio keeps its place.
-      if (name !== recName || !rec) await showRecording(name);
+      if (name === recState.name && recState.state === "transcribing" && !recState.preview) {
+        showWaiting(name);
+      } else if (name !== recName || !rec) await showRecording(name);
       else renderCalls();
       if (params.get("q")) openFind(params.get("q"), Number(params.get("hit") || 0));
     } else showEmpty();

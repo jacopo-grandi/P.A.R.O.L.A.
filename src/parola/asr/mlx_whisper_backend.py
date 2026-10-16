@@ -90,10 +90,15 @@ def sound_share(start: float, end: float, regions: list[tuple[float, float]]) ->
 
 
 @contextmanager
-def whisper_progress(callback) -> Iterator[None]:
+def whisper_progress(callback, segments=None) -> Iterator[None]:
     """Report how much of the audio Whisper has decoded: mlx_whisper only shows it as a tqdm
-    bar, so the bar is replaced by one that calls ``callback`` with the share done."""
-    if callback is None:
+    bar, so the bar is replaced by one that calls ``callback`` with the share done.
+
+    ``segments`` receives the segments decoded so far (mlx_whisper's own dicts, a copy of the
+    list) each time a window is done, so the app can show the text as it grows. They are read
+    from the transcribe loop, which updates the bar right after adding a window's segments;
+    nothing in the decoding changes (decision 0033)."""
+    if callback is None and segments is None:
         yield
         return
     import sys
@@ -115,8 +120,12 @@ def whisper_progress(callback) -> Iterator[None]:
 
         def update(self, k: int) -> None:
             self.n += k
-            if self.total:
+            if callback is not None and self.total:
                 callback(min(1.0, self.n / self.total))
+            if segments is not None:
+                so_far = sys._getframe(1).f_locals.get("all_segments")
+                if isinstance(so_far, list):  # another mlx_whisper version: no partial text
+                    segments(list(so_far))
 
     original = module.tqdm
     module.tqdm = SimpleNamespace(tqdm=Bar)
@@ -184,6 +193,21 @@ class MLXWhisperBackend:
         # Terms carried in the prompt of every window (parola.glossary).
         self.glossary = glossary
         self.on_progress = None
+        # Called with the segments decoded so far, as Segment objects, after every window.
+        self.on_segments = None
+
+    def _partial(self, language: str | None, regions=None):
+        """What whisper_progress hands over, made into the segments the transcript will have."""
+        if self.on_segments is None:
+            return None
+
+        def hand_over(raw: list[dict]) -> None:
+            segments = convert_result({"segments": raw, "language": language}).segments
+            if regions is not None:
+                segments = [s for s in segments if has_sound(s, regions)]
+            self.on_segments(segments)
+
+        return hand_over
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
         with carried_prompt(self.glossary):
@@ -200,7 +224,7 @@ class MLXWhisperBackend:
         if not self.vad:
             # Library defaults are kept on purpose: decoding parameters only change after
             # they are measured on the test set (Phase 2).
-            with whisper_progress(self.on_progress):
+            with whisper_progress(self.on_progress, self._partial(language)):
                 result = mlx_whisper.transcribe(
                     str(wav_path),
                     path_or_hf_repo=self.model,
@@ -223,7 +247,7 @@ class MLXWhisperBackend:
         # Decoding is the same as without VAD: shifting where it starts (or decoding each sound
         # stretch on its own, or Whisper's hallucination_silence_threshold) moved Whisper's
         # windows and made it skip real speech on the test set (results/2026-10-15-vad.md).
-        with whisper_progress(self.on_progress):
+        with whisper_progress(self.on_progress, self._partial(language, regions)):
             merged = mlx_whisper.transcribe(
                 str(wav_path),
                 path_or_hf_repo=self.model,

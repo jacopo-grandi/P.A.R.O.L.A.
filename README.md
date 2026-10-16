@@ -100,7 +100,8 @@ To transcribe an audio or video file recorded elsewhere, use the upload button n
 English, or Rileva to detect it; the last choice is offered first). It goes through the same
 transcription and doubtful words, on a single track: every voice is on it, so there is no "Io / Altri" split.
 While a file or a recording is being transcribed it shows at the top of the list, with its
-progress.
+progress; click it to watch the text grow as Whisper writes it (read-only until the doubtful
+words and the voices are in).
 
 The sidebar lists the calls by date. Its search box looks inside every transcript (case, accents
 and elided articles ignored: "perche" finds "perché", "impatto" finds "dell'impatto") and shows

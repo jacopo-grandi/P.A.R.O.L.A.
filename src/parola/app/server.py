@@ -120,6 +120,7 @@ def recordings(folder: Path) -> list[str]:
 IMPORT_EXTENSIONS = frozenset([
     ".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".opus", ".oga", ".webm", ".aiff", ".aif",
     ".caf", ".wma", ".amr", ".mp4", ".mov", ".m4v", ".mkv", ".avi",
+    ".qta",  # iPhone Voice Memos (QuickTime audio)
 ])  # fmt: skip
 
 

@@ -260,3 +260,30 @@ def test_whisper_runs_on_both_sides_before_the_second_opinion(tmp_path, monkeypa
     assert [label for label, _ in order] == ["whisper", "whisper", "parakeet", "parakeet"]
     assert seen[0][0] == 2  # shown after the two Whisper runs
     assert {s.channel for s in seen[0][1].segments} == {"mic", "system"}
+
+
+@requires_ffmpeg
+def test_the_text_grows_while_whisper_works(tmp_path, monkeypatch):
+    """Decision 0033: what Whisper has written so far, before the whole channel is done."""
+    monkeypatch.setattr(recorder, "_speaker_models", lambda: False)
+    monkeypatch.setattr(recorder, "PARTIAL_EVERY", 0.0)
+    _write(tmp_path / "c.mixed.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+
+    class Growing(FakeBackend):
+        on_segments = None
+
+        def transcribe(self, wav_path, language=None):
+            done = [seg(0, 1, "prima frase"), seg(1, 2, "seconda frase")]
+            for k in (1, 2):  # one window, then two
+                self.on_segments(done[:k])
+            return ASRResult(segments=done, language="it")
+
+    seen = []
+    backend = Growing()
+    recorder.transcribe_recording(rec, backend, preview=lambda stage, t: seen.append(
+        (stage, [s.text for s in t.segments])))  # fmt: skip
+    # Close sentences are joined as in the final transcript (merge_segments).
+    assert seen[:2] == [("partial", ["prima frase"]), ("partial", ["prima frase seconda frase"])]
+    assert seen[-1][0] == "transcript"
+    assert backend.on_segments is None  # unhooked when the channel is done

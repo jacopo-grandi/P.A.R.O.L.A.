@@ -364,3 +364,8 @@ body.pip .rec-live.pip-bar { height: 100vh; border: 0; border-radius: 0; padding
 .modal-file { font-size: var(--text-small); color: var(--fg); overflow-wrap: anywhere; }
 .modal-actions .cancel { margin-right: auto; background: none; color: var(--fg-2); padding-left: 0; }
 .modal-actions .cancel:hover { background: none; color: var(--fg); }
+
+/* Words Whisper has just written, while the text grows (decision 0033). */
+.fresh { animation: fresh 0.5s ease-out both; }
+@keyframes fresh { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fresh { animation: none; } }
