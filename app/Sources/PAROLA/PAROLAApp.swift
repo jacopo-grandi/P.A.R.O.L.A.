@@ -4,11 +4,44 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// SwiftUI puts its own object in NSApp.delegate: views reach this one through here.
+    static weak var shared: AppDelegate?
     var engine: Engine?
     var recorder: FloatingRecorder?
+    /// Opens the main window again once it was closed (SwiftUI's openWindow, kept by the views).
+    var openMain: (() -> Void)?
+
+    override init() {
+        super.init()
+        AppDelegate.shared = self
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated { engine?.stop() }  // never leave the engine (or a capture) running
+    }
+
+    /// A click on the Dock icon, or opening the app again from Finder.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated { showMainWindow() }
+        return false  // handled here
+    }
+
+    /// The main window in front, whatever happened to it: minimised to the Dock, hidden behind
+    /// other apps, or closed. openWindow alone does nothing for a minimised window, which SwiftUI
+    /// still counts as open.
+    @MainActor func showMainWindow() {
+        let window = NSApp.windows.first {
+            !($0 is NSPanel) && ($0.identifier?.rawValue.hasPrefix("main") ?? false)
+        }
+        if let window, window.isMiniaturized {
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+        } else if let window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            openMain?()
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -42,8 +75,16 @@ struct PAROLAApp: App {
 
 struct MainView: View {
     @EnvironmentObject var engine: Engine
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        content.onAppear {
+            // The window's own openWindow, for the Dock icon and the menu bar once it is closed.
+            AppDelegate.shared?.openMain = { [openWindow] in openWindow(id: "main") }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         switch engine.state {
         case .starting:
             VStack(spacing: 10) {
@@ -94,7 +135,9 @@ struct MenuContent: View {
     }
 
     private func open() {
-        openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
+        if AppDelegate.shared?.openMain == nil {
+            AppDelegate.shared?.openMain = { openWindow(id: "main") }
+        }
+        AppDelegate.shared?.showMainWindow()
     }
 }
