@@ -11,22 +11,41 @@ The command is `parola`. The old name `ilat` still works for now and prints a no
 
 How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
 
-Status: early development (Phase 1, see [`docs/PLAN.md`](docs/PLAN.md)).
+Status: in development, now a native Mac app (Phase 8, see [`docs/PLAN.md`](docs/PLAN.md)).
 
-## Requirements
+## Install the app
 
-- macOS on Apple Silicon
-- [uv](https://docs.astral.sh/uv/) and [ffmpeg](https://ffmpeg.org/): `brew install uv ffmpeg`
-
-## Setup
+On an Apple Silicon Mac with macOS 14 or later:
 
 ```bash
-uv sync
+git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git
+cd P.A.R.O.L.A.
+./install.sh
+```
+
+The script checks the tools (Swift, `uv`, `ffmpeg`) and asks before installing any, then builds
+`PAROLA.app` and offers to copy it to /Applications. On its first start the app asks to download
+the speech models (about 4.2 GB, once); after that, nothing goes over the network.
+
+Or let a coding agent do it: paste this into Claude Code, Codex or a similar agent on your Mac:
+
+> Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/P.A.R.O.L.A. into my
+> home folder and follow the "Instructions for coding agents" in its INSTALL.md.
+
+Details, updating, removing and troubleshooting: [`INSTALL.md`](INSTALL.md).
+
+## From the terminal
+
+Everything the app does is also a `parola` command. For development, after `./install.sh` (or
+`brew install uv ffmpeg` and `uv sync`):
+
+```bash
 uv run pre-commit install
 ```
 
-The first transcription downloads `mlx-community/whisper-large-v3-turbo` (~1.6 GB) from
-Hugging Face into the local cache. After that, nothing goes over the network.
+The first transcription downloads `mlx-community/whisper-large-v3-turbo` (~1.6 GB) and
+`mlx-community/parakeet-tdt-0.6b-v3` (~2.5 GB) from Hugging Face into the local cache, unless
+the app already did. After that, nothing goes over the network.
 
 ## Usage
 
