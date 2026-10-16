@@ -1,0 +1,74 @@
+name: Bug report
+description: Something does not work, or works badly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. **Do not attach recordings, transcripts or names of people from
+        your calls**: describe the problem in your own words instead. The output of
+        `parola doctor` below is enough for most problems.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and any message shown.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - The native app (PAROLA.app)
+        - In the browser (parola serve)
+        - A terminal command (parola transcribe, record...)
+        - Installing (install.sh)
+    validations:
+      required: true
+  - type: dropdown
+    id: audio
+    attributes:
+      label: Audio during the call
+      description: Bluetooth headphones change the audio format when the microphone starts.
+      options:
+        - Mac speakers and microphone
+        - Wired headphones
+        - AirPods
+        - Other Bluetooth headphones
+        - USB headset or audio interface
+        - Other
+        - Not a call (an imported file)
+    validations:
+      required: true
+  - type: dropdown
+    id: call
+    attributes:
+      label: Call app
+      options:
+        - Google Meet in Chrome
+        - Google Meet in another browser
+        - Zoom
+        - Microsoft Teams
+        - FaceTime
+        - Other
+        - Not a call
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of parola doctor
+      description: In the P.A.R.O.L.A. folder, run `uv run parola doctor` and paste what it prints.
+      render: markdown
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: What I pasted holds no recording, transcript, or name of a person or a call.
+          required: true

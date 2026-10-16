@@ -1,0 +1,31 @@
+name: Idea or request
+description: Something P.A.R.O.L.A. could do, or do better
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation, in your words. "When I review a long call, I lose track of..."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: Your idea, if you have one. It is fine to leave the how to us.
+  - type: dropdown
+    id: languages
+    attributes:
+      label: Languages you transcribe
+      multiple: true
+      options:
+        - Italian
+        - English
+        - Both in the same call
+        - Another language
+  - type: input
+    id: mac
+    attributes:
+      label: Your Mac
+      description: Chip and memory, e.g. "M1, 8 GB". Some ideas depend on it.

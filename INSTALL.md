@@ -72,6 +72,16 @@ Quit the app (menu bar icon → Esci), then delete:
   downloaded is kept.
 - **The app does not start** ("Motore non trovato"): run `./install.sh` again from the folder.
 
+Still stuck? [Open an issue](https://github.com/jacopo-grandi/P.A.R.O.L.A./issues/new/choose) and
+paste what this prints (it holds nothing personal; read it before pasting):
+
+```bash
+uv run parola doctor
+```
+
+The app keeps the engine's messages in `~/Library/Logs/P.A.R.O.L.A./engine.log`; `parola doctor`
+shows its last warnings and errors.
+
 ---
 
 ## Instructions for coding agents

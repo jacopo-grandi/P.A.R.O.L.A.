@@ -79,6 +79,9 @@ Mac:
 
 Details, updating, removing and troubleshooting: [`INSTALL.md`](INSTALL.md).
 
+Something not working? [Open an issue](https://github.com/jacopo-grandi/P.A.R.O.L.A./issues/new/choose)
+with the output of `uv run parola doctor`.
+
 ## From the terminal
 
 Everything the app does is also a `parola` command. For development, after `./install.sh` (or
