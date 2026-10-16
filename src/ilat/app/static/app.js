@@ -770,35 +770,6 @@ document.addEventListener("keydown", e => {
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
 });
 
-// ---------------------------------------------------------------- type variants (dev only)
-
-const TYPES = [["v1", "v1"], ["sf", "SF"], ["charter", "Charter"], ["iowan", "Iowan"],
-               ["avenir", "Avenir"]];
-
-function typeVariants() {
-  // ?type=charter picks a variant; ?compare adds a switch to flip between them.
-  const params = new URLSearchParams(location.search);
-  const apply = t => {
-    if (t && t !== "sf") document.documentElement.dataset.type = t;
-    else delete document.documentElement.dataset.type;
-  };
-  apply(params.get("type"));
-  if (!params.has("compare")) return;
-  const bar = el("div", { class: "variants", role: "group", "aria-label": "Variante tipografica" });
-  for (const [v, label] of TYPES) {
-    bar.append(el("button", { "data-v": v, onclick: () => {
-      params.set("type", v);
-      history.replaceState(null, "", `?${params}${location.hash}`);
-      apply(v);
-      for (const b of bar.children) b.setAttribute("aria-pressed", String(b.dataset.v === v));
-    } }, label));
-  }
-  const current = params.get("type") || "sf";
-  for (const b of bar.children) b.setAttribute("aria-pressed", String(b.dataset.v === current));
-  document.body.append(bar);
-}
-
-typeVariants();
 window.addEventListener("hashchange", route);
 refreshCalls().catch(() => {}).then(route);
 poll();

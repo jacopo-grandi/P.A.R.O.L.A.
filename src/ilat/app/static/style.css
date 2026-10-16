@@ -17,10 +17,10 @@
   --radius: 8px;
   --side-w: 264px;
   /* Fonts. Only faces macOS ships: Chrome reaches SF Pro through system-ui, but not SF Mono,
-     New York or SF Rounded, so numbers use SF Pro with tabular figures instead of a mono face. */
+     New York or SF Rounded, so numbers use SF Pro with tabular figures instead of a mono face.
+     The transcript is long reading: Charter, a serif drawn for screens (decision 0018). */
   --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  --font-read: var(--font-ui);   /* the transcript */
-  --font-title: var(--font-ui);  /* the call title */
+  --font-read: Charter, "Iowan Old Style", Georgia, serif;  /* the transcript */
   --font-num: var(--font-ui);    /* times, timers, shortcuts: always tabular-nums */
   /* Type scale: one size per role. */
   --text-caption: 0.75rem;   /* 12px: times, group labels, sub lines */
@@ -28,26 +28,11 @@
   --text-ui: 0.9375rem;      /* 15px: default interface text */
   --text-heading: 1.0625rem; /* 17px */
   --text-title: 1.25rem;     /* 20px */
-  --read-size: 1rem;
-  --read-leading: 1.625;
+  --read-size: 1.0625rem;
+  --read-leading: 1.6;
   --read-ems: 33;            /* line length in ems of the reading size: about 70 characters */
 }
 
-/* Type variants to compare (dev only: ?compare in the URL). */
-:root[data-type="v1"] { --font-num: ui-monospace, "SF Mono", Menlo, monospace; }
-:root[data-type="charter"] {
-  --font-read: Charter, "Iowan Old Style", Georgia, serif;
-  --read-size: 1.0625rem; --read-leading: 1.6;
-}
-:root[data-type="iowan"] {
-  --font-read: "Iowan Old Style", Charter, Georgia, serif;
-  --font-title: "Iowan Old Style", Charter, Georgia, serif;
-  --read-size: 1.0625rem; --read-leading: 1.6;
-}
-:root[data-type="avenir"] {
-  --font-ui: "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
-  --font-read: var(--font-ui); --font-title: var(--font-ui); --font-num: var(--font-ui);
-}
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -150,7 +135,7 @@ svg { display: block; }
   border-bottom: 1px solid var(--line);
 }
 .call-head .heading { flex: 1; min-width: 0; }
-.call-head h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-title);
+.call-head h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui);
                 letter-spacing: -0.01em; white-space: nowrap; overflow: hidden;
                 text-overflow: ellipsis; cursor: text; }
 .call-head h1 input { width: 100%; font: inherit; }
@@ -241,13 +226,6 @@ kbd { font: var(--text-caption) var(--font-num); padding: 0 4px; border: 1px sol
 .toast-action { color: var(--accent); font-weight: 600; padding: 2px 4px; border-radius: 4px; }
 .toast-action:hover { background: var(--hover); }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
-
-.variants {
-  position: fixed; left: 12px; bottom: 12px; z-index: 20; display: flex; gap: 2px; padding: 2px;
-  border-radius: 8px; background: #2c2c2e; font: 500 var(--text-caption) system-ui, sans-serif;
-}
-.variants button { padding: 3px 10px; border-radius: 6px; color: var(--fg-2); }
-.variants button[aria-pressed="true"] { background: var(--fg); color: #000; }
 
 /* ------------------------------------------------------------------ floating recorder */
 
