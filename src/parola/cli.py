@@ -3,6 +3,7 @@
 parola transcribe <file>              audio/video -> <name>.json + <name>.txt
 parola record                         record a call (mic + system audio) and transcribe it
 parola serve                          local web UI for the recorded calls
+parola titles                         suggested titles next to the ones you chose
 parola validate <transcript.json>     check a reference against docs/conventions.md
 parola annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 parola annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -91,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
                     help="folder with the recordings (default: data/private/calls)")  # fmt: skip
     sv.add_argument("--port", type=int, default=8765)
+
+    ti = sub.add_parser("titles", help="suggested titles next to the ones you chose")
+    ti.add_argument("--dir", type=Path, default=Path("data/private/calls"))
 
     v = sub.add_parser("validate", help="check a reference transcript against the conventions")
     v.add_argument("file", type=Path)
@@ -226,6 +230,30 @@ def cmd_record(args) -> int:
     return main_record(args.out, args.name, make_engine(args.engine), language,
                        args.duration, not args.no_mic, not args.no_system,
                        second=second)  # fmt: skip
+
+
+def cmd_titles(args) -> int:
+    """How suggested titles fare (decision 0023): a call you renamed is a reference title."""
+    from parola.app.server import recordings
+    from parola.schema import Transcript
+
+    kept = renamed = 0
+    for name in recordings(args.dir):
+        meta = Transcript.load(args.dir / f"{name}.json").metadata
+        if not meta.title_suggested:
+            continue
+        if meta.title and meta.title != meta.title_suggested:
+            renamed += 1
+            print(f"{name}\n  suggested: {meta.title_suggested}\n  yours:     {meta.title}")
+        else:
+            kept += 1
+            print(f"{name}\n  kept:      {meta.title_suggested}")
+    total = kept + renamed
+    if not total:
+        print("no calls with a suggested title yet: record or import a few", file=sys.stderr)
+        return 0
+    print(f"\n{kept} of {total} suggested titles kept, {renamed} renamed")
+    return 0
 
 
 def cmd_serve(args) -> int:
@@ -498,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         ("transcribe", None): cmd_transcribe,
         ("record", None): cmd_record,
         ("serve", None): cmd_serve,
+        ("titles", None): cmd_titles,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,

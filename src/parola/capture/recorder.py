@@ -281,7 +281,8 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     json_path = rec.out_dir / f"{rec.name}.json"
     txt_path = rec.out_dir / f"{rec.name}.txt"
     # A title from what was said (decision 0020): only a label, the person can change it.
-    merged.metadata.title = merged.metadata.title or suggest_title(merged)
+    merged.metadata.title_suggested = suggest_title(merged)
+    merged.metadata.title = merged.metadata.title or merged.metadata.title_suggested
     merged.save(json_path)
     txt_path.write_text(to_dialogue(merged), encoding="utf-8")
     return json_path, txt_path

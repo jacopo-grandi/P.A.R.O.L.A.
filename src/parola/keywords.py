@@ -1,12 +1,19 @@
 """Key phrases of a call and a title suggested from them, without a language model.
 
-A RAKE-style extractor (Rose et al., 2010; decisions 0020, 0022): the text is cut at stop words,
-fillers, discourse markers, verbs, adverbs, generic nouns, numbers, punctuation and doubtful
-words; what is left between the cuts are candidate noun phrases of one to three content words,
-which may hold "di"/"of" ("raccolta delle olive", "number of seeds"). Singular and plural are
-counted together. A phrase scores how often it is said times how often its words are said, so a
-term repeated through the call ("baking soda") beats a phrase said once. It works on one call
-alone, with no archive to compare against.
+A RAKE-style extractor (Rose et al., 2010; decisions 0020, 0022, 0023). The text is cut into
+candidate phrases at words that cannot belong to a topic:
+
+- closed classes: articles, prepositions, pronouns, conjunctions, auxiliaries and modals,
+  numbers; the fillers of docs/conventions.md and the usual discourse markers;
+- the most frequent words of the language (Zipf frequency 6 or more, over one in a thousand
+  words: "cosa", "think", "because"), the frequency-based stop list RAKE itself suggests;
+- adverbs in -mente, punctuation, and doubtful words.
+
+A phrase has one to three content words and may hold "di"/"of" ("raccolta delle olive", "number
+of seeds"). It scores TF-IDF against the language: how often it is said, times how often its
+words are said in the call weighted by how rare they are in Italian or English (wordfreq). So
+"basil" or "DOP" beat "realtà" or "lavoro" without any list of generic words, also in calls
+nobody looked at. Singular and plural count together.
 
 The title is built like a title, not a tag list: the two best phrases joined by "e"/"and", and
 two phrases with the same head coordinated ("peperoni rossi" + "peperoni gialli" -> "Peperoni
@@ -23,6 +30,9 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import cache
+
+from wordfreq import zipf_frequency
 
 from parola.eval.normalize import FILLER_FORMS
 from parola.schema import Transcript
@@ -32,48 +42,35 @@ TITLE_PHRASES = 2
 TITLE_CHARS = 60
 MIN_CONTENT_WORDS = 60  # below this a call is a test or a greeting: no title to suggest
 DOUBTFUL_REPEATS = 3
+# Zipf 6 = once per thousand words: the top of the language, where only function words and
+# all-purpose words live.
+FREQUENT_ZIPF = 6.0
 
 
 def _words(text: str) -> list[str]:
     return text.split()
 
 
-# Function words. Hand-written, short on purpose: what matters is what breaks a phrase.
+# Closed classes only: they can be listed in full, so the list does not depend on any call.
 STOP_IT = frozenset(
     _words(
         """
 a ad al allo ai agli all alla alle col coi con da dal dallo dai dagli dall dalla dalle di del
 dello dei degli dell della delle in nel nello nei negli nell nella nelle su sul sullo sui sugli
-sull sulla sulle per tra fra il lo la i gli le l un uno una un' e ed o od ma se che chi cui non
-né ne ci vi si mi ti lo li me te se ce ve io tu lui lei noi voi loro mio mia miei mie tuo tua
-tuoi tue suo sua suoi sue nostro nostra nostri nostre vostro vostra vostri vostre questo questa
-questi queste quello quella quelli quelle quel quei quegli qui qua lì là come dove quando quanto
-quanta quanti quante più meno molto molta molti molte poco poca pochi poche tanto tanta tanti
-tante tutto tutta tutti tutte altro altra altri altre ogni qualche qualcosa nulla niente sempre
-mai già ancora anche pure solo proprio così dopo prima poi ora adesso oggi ieri domani sopra
-sotto dentro fuori senza contro verso fino mentre perché perchè poiché però anzi oppure invece
-sia essere sono sei è siamo siete era eri erano ero sarà saranno sarei sarebbe stato stata stati
-state stare sto sta stai stanno stavo stava avere ho hai ha abbiamo avete hanno avevo aveva
-avevano avuto avrà avrei avrebbe fare faccio fai fa facciamo fate fanno fatto fatta fatti
-facendo dire dico dici dice diciamo dite dicono detto andare vado vai va andiamo andate vanno
-andato potere posso puoi può possiamo potete possono potrebbe dovere devo devi deve dobbiamo
-dovete devono dovrebbe volere voglio vuoi vuole vogliamo volete vogliono vorrei sapere so sai
-sa sappiamo sanno vedere vedo vedi vede vediamo vedete vedono visto metto metti mette mettiamo
-messo dare do dai dà diamo danno dato venire vengo vieni viene veniamo vengono venuto pensare
-penso pensi pensa pensiamo credo credi crede crediamo sembra sembrano pare parlare parlo parli
-parla parliamo parlano capire capisco capito sentire sento sente abbia abbiano sia siano fosse
-fossero stiamo state stanno facciamo serve servono bisogna c' l' un' dell' all' nell' sull' dall'
-quest' quell' po' sì si no ok okay vabbè va' be'
-"""
-    )
-)
-# Endings that are verbs in Italian: "stiamo", "facendo", "spingere". Nouns rarely end so.
-_VERB_ENDINGS = ("iamo", "iate", "ando", "endo", "are", "ere", "ire", "ate", "ete", "ite")
-_NOT_VERBS = frozenset(
-    _words(
-        """
-mare dare piacere potere sapere dovere carattere livello cliente fornitore partner area
-software hardware share here there where care core more store score rete sete parete
+sull sulla sulle per tra fra il lo la i gli le l un uno una e ed o od ma se che chi cui non né
+ne ci vi si mi ti li me te ce ve io tu lui lei noi voi loro mio mia miei mie tuo tua tuoi tue
+suo sua suoi sue nostro nostra nostri nostre vostro vostra vostri vostre questo questa questi
+queste quello quella quelli quelle quel quei quegli qui qua lì là come dove quando quanto quanta
+quanti quante più meno molto molta molti molte poco poca pochi poche tanto tanta tanti tante
+tutto tutta tutti tutte altro altra altri altre ogni qualche qualcosa nulla niente sempre mai
+già ancora anche pure solo proprio così dopo prima poi ora adesso oggi ieri domani sopra sotto
+dentro fuori senza contro verso fino mentre perché perchè poiché però anzi oppure invece sì no
+essere sono sei è siamo siete era eri erano ero sarà saranno sarei sarebbe stato stata stati
+state sia siano fosse fossero avere ho hai ha abbiamo avete hanno avevo aveva avevano avuto avrà
+avrei avrebbe abbia abbiano stare sto sta stai stiamo stanno stavo stava potere posso puoi può
+possiamo potete possono potrebbe dovere devo devi deve dobbiamo dovete devono dovrebbe volere
+voglio vuoi vuole vogliamo volete vogliono vorrei c' l' un' dell' all' nell' sull' dall' quest'
+quell' po'
 """
     )
 )
@@ -86,10 +83,7 @@ her they them their what which who whom whose when where why how all any some no
 also just very more most less much many few each every other another such own same is are was
 were be been being am have has had having do does did doing done can could will would shall
 should may might must let's i'm you're we're they're i've we've don't doesn't didn't can't
-won't isn't aren't wasn't weren't yes yeah ok okay oh like get got go going gone say said
-thing things way really actually now well right because think know mean want need make makes
-made see look let try use used using gonna wanna kind sort lot lots bit something anything
-everything nothing someone guys maybe probably sure good great nice fine
+won't isn't aren't wasn't weren't yes no
 """
     )
 )
@@ -98,10 +92,7 @@ DISCOURSE = frozenset(
     _words(
         """
 allora quindi cioè insomma diciamo praticamente tipo comunque appunto ecco boh beh vabbe
-vabbè magari forse chiaramente ovviamente sicuramente fondamentalmente sostanzialmente
-eventualmente esattamente assolutamente perfetto bene benissimo grazie scusa scusate ciao
-guarda guardate senti sentite dai niente vero infatti mah uhm hmm basically like literally
-anyway okay alright sorry thanks please esatto certo giusto chiaro sisi nono
+vabbè magari forse ok okay va' be' mah uhm hmm basically literally anyway alright yeah oh
 """
     )
 )
@@ -116,17 +107,23 @@ million first second third half
 """
     )
 )
-# Nouns too generic to name a call.
-GENERIC = frozenset(
+# Determiners and articulated prepositions: they select a noun phrase, so a phrase said after
+# one of them is nominal ("il basilico", "the ripest tomato"); "esatto", "ciao" or "in realtà"
+# never are. Closed classes, listed in full.
+DETERMINERS = frozenset(
     _words(
         """
-volta volte parte parti modo punto punti tempo momento esempio caso fatto fatti persona persone
-roba discorso domanda domande problema cosa cose giorno giorni settimana anno anni minuto minuti
-secondo pezzo idea senso lato tipo realtà tema temi argomento livello time thing things stuff
-point part people way question work
+il lo la i gli le l un uno una un' del dello della dei degli delle dell al allo alla ai agli
+alle all dal dallo dalla dai dagli dalle dall nel nello nella nei negli nelle nell sul sullo
+sulla sui sugli sulle sull col coi questo questa questi queste quest quel quello quella quelli
+quelle quei quegli quell mio mia miei mie tuo tua tuoi tue suo sua suoi sue nostro nostra
+nostri nostre vostro vostra vostri vostre loro ogni qualche alcuni alcune ciascun nessun the a
+an this that these those my your his her its our their every each some any no another
 """
     )
 )
+# Share of a phrase's occurrences that must follow a determiner for it to count as a topic.
+NOMINAL_SHARE = 0.1
 # "di"/"of" may join two content words inside a phrase: "raccolta delle olive".
 CONNECTORS = frozenset(_words("di del della dei degli delle dello dell dell' d' of"))
 
@@ -149,14 +146,23 @@ def _fillers() -> frozenset[str]:
 _FILLERS = _fillers()
 
 
-def _is_stop(word: str) -> bool:
+def _is_stop(word: str, lang: str = "it") -> bool:
     return (word in STOP_IT or word in STOP_EN or word in DISCOURSE or word in _FILLERS
-            or word in GENERIC or word in NUMBERS or _looks_like_verb(word)
-            or _looks_like_adverb(word))  # fmt: skip
+            or word in NUMBERS or _looks_like_adverb(word)
+            # Either language: calls mix them, and "because" in an Italian sentence is still
+            # a function word.
+            or max(_zipf(word, "it"), _zipf(word, "en")) >= FREQUENT_ZIPF)  # fmt: skip
 
 
-def _looks_like_verb(word: str) -> bool:
-    return len(word) >= 6 and word.endswith(_VERB_ENDINGS) and word not in _NOT_VERBS
+@cache
+def _zipf(word: str, lang: str) -> float:
+    """How common the word is in the language: 7 for "the", 3 for "basil", 0 if unknown."""
+    return zipf_frequency(word, lang if lang in ("it", "en") else "it")
+
+
+def _rarity(word: str, lang: str) -> float:
+    """IDF against the language: -log10 of the word's frequency (Zipf is log10 per billion)."""
+    return max(0.0, 9.0 - _zipf(word, lang))
 
 
 def _looks_like_adverb(word: str) -> bool:
@@ -183,51 +189,66 @@ def _content(run: list[tuple[str, str]]) -> list[str]:
     return [w for w, _ in run if w not in CONNECTORS]
 
 
-def _runs(t: Transcript) -> list[list[tuple[str, str]]]:
-    """Runs of (lowercase word, spelling as said) between breaks. A connector stays in a run
+def _runs(t: Transcript) -> tuple[list[list[tuple[str, str]]], dict[str, Counter], list[bool]]:
+    """Runs of (lowercase word, spelling as said) between breaks, the languages each word was said
+    in, and for each run whether a determiner comes right before it. A connector stays in a run
     only between two content words."""
     runs: list[list[tuple[str, str]]] = []
+    starts: list[bool] = []
+    langs: dict[str, Counter] = {}
     doubtful = Counter(_key(w.text) for s in t.segments for w in s.words if w.doubtful)
 
-    def close(run: list[tuple[str, str]]) -> None:
+    def close(run: list[tuple[str, str]], det: bool) -> None:
         if _content(run):
             runs.append(run)
+            starts.append(det)
 
     for seg in t.segments:
+        lang = seg.lang or "it"
         run: list[tuple[str, str]] = []
         pending: list[tuple[str, str]] = []  # a connector waiting for the next content word
+        det = False  # the run being built started right after a determiner
+        before = ""  # the previous word, lowercase
         for w in seg.words:
             raw = w.text.strip()
             surface = raw.strip(_EDGE)
+            after_det = before in DETERMINERS
             # "l'impatto" -> "impatto"; "dell'impatto" may continue a phrase as "dell' impatto".
             if m := _ELIDED.match(surface):
                 lead = m.group(1).lower()
+                after_det = lead.rstrip("'") in DETERMINERS
                 if run and lead in CONNECTORS:
                     pending = [(lead, m.group(1))]
                 else:
-                    close(run)
+                    close(run, det)
                     run, pending = [], []
                 surface = m.group(2)
+            before = surface.lower()
             word = surface.lower()
             acronym = len(surface) >= 2 and surface.isupper() and surface.isalpha()
             trusted = not w.doubtful or doubtful[_key(w.text)] >= DOUBTFUL_REPEATS
-            content = (word and trusted and not _is_stop(word)
+            content = (word and trusted and not _is_stop(word, lang)
                        and not any(c.isdigit() for c in word)
                        and (len(word) >= 3 or acronym))  # fmt: skip
             ends = bool(_BREAK_AFTER.search(raw))
             if content:
+                if not run:
+                    det = after_det
                 run += [*pending, (word, surface)]
                 pending = []
+                langs.setdefault(word, Counter())[lang] += 1
             elif run and word in CONNECTORS and not pending and not ends:
                 pending = [(word, surface)]
             else:
-                close(run)
+                close(run, det)
                 run, pending = [], []
             if run and ends:
-                close(run)
+                close(run, det)
                 run, pending = [], []
-        close(run)
-    return runs
+            if ends:
+                before = ""
+        close(run, det)
+    return runs, langs, starts
 
 
 def _spell(spellings: Counter) -> str:
@@ -249,8 +270,9 @@ def _show(words: tuple[str, ...], spellings: dict[str, Counter]) -> str:
     return out
 
 
-def _inner_phrases(words: list[str]) -> list[list[str]]:
-    """Shorter stretches of a phrase that start and end on content words and hold two or more."""
+def _inner_phrases(words: list[str]) -> list[tuple[int, list[str]]]:
+    """Shorter stretches of a phrase that start and end on content words and hold two or more,
+    with where they start."""
     out = []
     n = len(words)
     for i in range(n):
@@ -258,39 +280,60 @@ def _inner_phrases(words: list[str]) -> list[list[str]]:
             if (i, j) == (0, n) or words[i] in CONNECTORS or words[j - 1] in CONNECTORS:
                 continue
             if len([w for w in words[i:j] if w not in CONNECTORS]) >= 2:
-                out.append(words[i:j])
+                out.append((i, words[i:j]))
     return out
 
 
 def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
     """The call's key phrases, best first."""
-    runs = _runs(t)
+    runs, langs, starts = _runs(t)
     spellings: dict[str, Counter] = {}
     for run in runs:
         for w, surface in run:
             if w not in CONNECTORS:
                 spellings.setdefault(w, Counter())[surface] += 1
     freq = Counter(fold(w) for run in runs for w in _content(run))
+    # How rare each (folded) word is in the language, from its most common form and language.
+    forms: dict[str, Counter] = {}
+    for w, spelled in spellings.items():
+        forms.setdefault(fold(w), Counter())[w] += sum(spelled.values())
+    rarity = {}
+    for key, ws in forms.items():
+        word = ws.most_common(1)[0][0]
+        rarity[key] = _rarity(word, langs[word].most_common(1)[0][0])
     counts: Counter[tuple[str, ...]] = Counter()
+    nominal: Counter[tuple[str, ...]] = Counter()  # times said right after a determiner
     seen: dict[tuple[str, ...], Counter] = {}  # folded phrase -> the forms it was said in
-    for run in runs:
+    for run, det in zip(runs, starts, strict=True):
         words = [w for w, _ in run]
         # A long run: its words still count, as single-word candidates.
-        candidates = [words] if len(_content(run)) <= MAX_WORDS else [[w] for w in _content(run)]
-        # A phrase of two or more words also counts where it is said inside a longer one:
-        # "vaso rialzato" in "vaso rialzato di ottobre".
         if len(_content(run)) <= MAX_WORDS:
-            candidates += _inner_phrases(words)
-        for c in candidates:
+            candidates = [(words, det)]
+            # A phrase of two or more words also counts where it is said inside a longer one:
+            # "vaso rialzato" in "vaso rialzato di ottobre".
+            candidates += [(c, det and i == 0) for i, c in _inner_phrases(words)]
+        else:
+            candidates = [([w], det and k == 0) for k, w in enumerate(_content(run))]
+        for c, after_det in candidates:
             key = tuple(w if w in CONNECTORS else fold(w) for w in c)
             counts[key] += 1
+            nominal[key] += after_det
             seen.setdefault(key, Counter())[tuple(c)] += 1
 
+    def is_topic(key: tuple[str, ...]) -> bool:
+        """A noun phrase: said after a determiner often enough, or a name or an acronym (names
+        go without articles: "Italy", "Portogallo")."""
+        if nominal[key] >= NOMINAL_SHARE * counts[key]:
+            return True
+        shown = _show(seen[key].most_common(1)[0][0], spellings)
+        return any(w[:1].isupper() for w in shown.split() if w not in CONNECTORS)
+
+    counts = Counter({k: n for k, n in counts.items() if is_topic(k)})
+
     def score(key: tuple[str, ...], n: int) -> float:
-        content = [w for w in key if w not in CONNECTORS]
-        # Said often, made of words said often; two or three words weigh a bit more, since
-        # "baking soda" names a subject better than "key" or "result" alone.
-        return n * sum(freq[w] for w in content) * (1 + 0.5 * (len(content) - 1))
+        # TF-IDF against the language: said often, made of words said often in this call and
+        # rare in Italian or English.
+        return n * sum(freq[w] * rarity[w] for w in key if w not in CONNECTORS)
 
     ranked = sorted(counts.items(), key=lambda kv: (-score(*kv), -kv[1], kv[0]))
     chosen: list[tuple[tuple[str, ...], int]] = []
@@ -322,7 +365,7 @@ def _language(t: Transcript) -> str:
 
 def suggest_title(t: Transcript) -> str | None:
     """A title from the two best key phrases, or None when the call is too short to tell."""
-    if sum(len(_content(r)) for r in _runs(t)) < MIN_CONTENT_WORDS:
+    if sum(len(_content(r)) for r in _runs(t)[0]) < MIN_CONTENT_WORDS:
         return None
     phrases = [p.text for p in key_phrases(t, limit=6) if p.count >= 2]
     if not phrases:

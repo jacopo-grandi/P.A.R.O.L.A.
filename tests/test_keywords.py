@@ -42,13 +42,15 @@ def test_stop_words_and_fillers_cut_phrases():
 
 
 def test_punctuation_breaks_a_phrase():
-    t = call("abbiamo il mulching. Raccolto tardivo", "il mulching, raccolto tardivo")
+    t = call("abbiamo il mulching. Il raccolto tardivo", "il mulching, il raccolto tardivo")
     assert "mulching raccolto tardivo" not in texts(t)
     assert {"mulching", "raccolto tardivo"} <= set(texts(t))
 
 
 def test_repeated_phrase_beats_a_long_one_said_once():
-    t = call("baking soda", "baking soda della domenica", "baking soda", "grande nuova idea strana")
+    t = call(
+        "il baking soda", "il baking soda della domenica", "il baking soda", "una grande idea strana"
+    )
     assert texts(t)[0] == "baking soda"
 
 
@@ -93,10 +95,11 @@ def test_title_from_the_top_phrases():
 
 
 def test_title_stays_short():
-    long = "piattaforma integrazione sistemi"
+    long = "la piattaforma integrazione sistemi"
     filler = FILLER
-    t = call(*[f"{long}."] * 3, *["architettura distribuita."] * 3, *["roadmap trimestrale."] * 3,
-             filler)  # fmt: skip
+    lines = [*[f"{long}."] * 3, *["l'architettura distribuita."] * 3,
+             *["la roadmap trimestrale."] * 3, filler]  # fmt: skip
+    t = call(*lines)
     title = suggest_title(t)
     assert title is not None and len(title) <= 60
 
@@ -141,3 +144,19 @@ def test_title_coordinates_phrases_with_the_same_head():
 def test_english_title_uses_and():
     lines = [*["the ripest tomato."] * 3, *["the number of seeds."] * 2, FILLER]
     assert suggest_title(call(*lines, lang="en")) == "Ripest tomato and number of seeds"
+
+
+def test_only_noun_phrases_name_a_call():
+    # "esatto", "ciao" never follow an article: they are discourse markers, not topics.
+    lines = ["esatto, il concime.", "esatto.", "ciao ciao", "esatto il concime.", "ciao"]
+    assert texts(call(*lines)) == ["concime"]
+
+
+def test_names_count_without_an_article():
+    t = call("siamo andati in Portogallo.", "in Portogallo il concime.", "il concime.")
+    assert "Portogallo" in texts(t)
+
+
+def test_very_frequent_words_break_phrases():
+    t = call("the ripest tomato because.", "the ripest tomato because.")
+    assert texts(t) == ["ripest tomato"]

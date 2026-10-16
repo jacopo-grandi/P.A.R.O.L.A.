@@ -121,14 +121,22 @@ echo removal; telling the voices apart needs speaker diarization, planned after 
 - **Clean version:** only removes material (fillers, repetitions, false starts) by explicit rules,
   never rewrites. A trained classifier is paused
   ([0012](docs/decisions/0012-clean-layer-by-labeling.md)).
-- **Title:** key noun phrases chosen without a language model, using a RAKE-style method
+- **Title:** key noun phrases chosen without a language model
   ([0020](docs/decisions/0020-title-from-key-phrases.md),
-  [0022](docs/decisions/0022-titles-read-like-titles.md)). The text is split at hand-written
-  Italian and English stop words, fillers, discourse markers, verbs, adverbs and punctuation;
-  "di"/"of" may stay inside a phrase, and singular and plural count together. The title joins
-  the two best phrases ("Peperoni rossi e gialli", "Ripest tomato and number of
-  seeds"). A doubtful word counts only if it was transcribed the same way at least three
-  times. The title is a suggestion: one the user set is never replaced.
+  [0022](docs/decisions/0022-titles-read-like-titles.md),
+  [0023](docs/decisions/0023-title-rules-that-generalize.md)), with rules that do not depend on
+  any particular call:
+  - phrases are cut at closed-class words (articles, prepositions, pronouns, auxiliaries,
+    numbers, fillers) and at the most frequent words of Italian or English (Zipf ≥ 6);
+  - they are scored by TF-IDF against the language: frequent in the call, rare in general;
+  - only noun phrases count: said after a determiner at least 10% of the time, or a name or an
+    acronym. This keeps out discourse markers such as "esatto" or "ciao".
+
+  The title joins the two best phrases ("Peperoni rossi e gialli"). Each call keeps the
+  suggested title apart from the one the user chose, and `parola titles` compares them, so the
+  rules are measured on calls they were never tuned on. Word frequencies come from
+  [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (code Apache-2.0, data
+  CC BY-SA 4.0).
 
 ## Reproducing the numbers
 
@@ -166,3 +174,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0020](docs/decisions/0020-title-from-key-phrases.md) | Title from key phrases, without a language model |
 | [0021](docs/decisions/0021-import-audio-and-video-files.md) | Importing audio and video files |
 | [0022](docs/decisions/0022-titles-read-like-titles.md) | Titles that read like titles |
+| [0023](docs/decisions/0023-title-rules-that-generalize.md) | Title rules that generalize |

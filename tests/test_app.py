@@ -163,5 +163,5 @@ def test_title_suggestion_saves_nothing(client, folder):
     before = (folder / "call.json").read_text()
     r = client.get("/api/recordings/call/title-suggestion").json()
     assert r["title"] is None  # four words: too short for a title
-    assert "buongiorno" in r["phrases"]
+    assert r["phrases"] == []  # "ciao", "buongiorno": greetings, not topics
     assert (folder / "call.json").read_text() == before

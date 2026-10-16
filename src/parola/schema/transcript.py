@@ -99,6 +99,9 @@ class Metadata(BaseModel):
     annotator: str | None = None
     # Display name chosen by the user in the app; the files keep their original name.
     title: str | None = None
+    # The title the app suggested (decision 0023): kept apart from ``title`` so suggestions can be
+    # measured against what the person chose.
+    title_suggested: str | None = None
     created_at: datetime
     # Files written before the rename (decision 0019) still say "ilat_version".
     parola_version: str = Field(validation_alias=AliasChoices("parola_version", "ilat_version"))

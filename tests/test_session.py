@@ -208,3 +208,19 @@ def test_api_import(tmp_path, helper):
     assert not list((tmp_path / ".uploads").iterdir())
     md = client.get("/export/riunione.md").text
     assert "**" not in md.split("\n", 2)[2]  # no side label on a single-track file
+
+
+@requires_ffmpeg
+def test_the_suggested_title_is_kept_apart(tmp_path, helper, capsys):
+    from parola.cli import main
+
+    long_text = " ".join(["il mulching naturale."] * 3 + ["i semi antichi."] * 2
+                         + [f"k{a}{b}" for a in "bcdfgjlm" for b in "npqrstvz"])  # fmt: skip
+    backends = lambda: (Fake(long_text), Fake(long_text))  # noqa: E731
+    session = RecordingSession(tmp_path, binary=helper, backends=backends)
+    session.import_file(tone(tmp_path / "a.m4a"), "a.m4a")
+    assert wait_for(session, "done")["state"] == "done"
+    meta = Transcript.load(tmp_path / "a.json").metadata
+    assert meta.title_suggested == meta.title == "Mulching naturale e semi antichi"
+    assert main(["titles", "--dir", str(tmp_path)]) == 0
+    assert "1 of 1 suggested titles kept" in capsys.readouterr().out
