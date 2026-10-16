@@ -81,22 +81,6 @@ def speech_regions(wav_path: Path) -> list[tuple[float, float]]:
     return out
 
 
-def speech_audio(wav_path: Path, regions: list[tuple[float, float]], max_seconds: float
-                 ) -> np.ndarray:  # fmt: skip
-    """The sound stretches of a 16 kHz mono wav, concatenated, as float32 (for Whisper)."""
-    with wave.open(str(wav_path), "rb") as f:
-        rate = f.getframerate()
-        samples = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
-    pieces, total = [], 0
-    for start, end in regions:
-        piece = samples[int(start * rate) : int(end * rate)]
-        pieces.append(piece[: int(max_seconds * rate) - total])
-        total += len(pieces[-1])
-        if total >= max_seconds * rate:
-            break
-    return (np.concatenate(pieces) if pieces else samples[:0]).astype(np.float32) / 32768.0
-
-
 def chunks(regions: list[tuple[float, float]], max_seconds: float = 28.0,
            max_gap: float = 2.0) -> list[tuple[float, float]]:  # fmt: skip
     """Group sound regions into chunks Whisper decodes in one window (at most ``max_seconds``).

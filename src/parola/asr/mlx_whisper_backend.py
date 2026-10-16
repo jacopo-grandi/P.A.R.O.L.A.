@@ -210,20 +210,16 @@ class MLXWhisperBackend:
                 )
             return convert_result(result)
 
-        from parola.audio.vad import speech_audio, speech_regions
+        from parola.asr.language import detect
+        from parola.audio.vad import speech_regions
 
         regions = speech_regions(wav_path)
         if not regions:
             return ASRResult(segments=[], language=None)
         if language is None:
-            # Detect the language on speech only: Whisper looks at the first 30 s, which in a
-            # call channel can be silence or the other side's music.
-            probe = mlx_whisper.transcribe(
-                speech_audio(wav_path, regions, max_seconds=30.0),
-                path_or_hf_repo=self.model,
-                condition_on_previous_text=False,
-            )
-            language = probe.get("language")
+            # Not Whisper's own guess on the first 30 s: windows spread over the whole call
+            # (parola.asr.language).
+            language = detect(wav_path, regions, self.model)
         # Decoding is the same as without VAD: shifting where it starts (or decoding each sound
         # stretch on its own, or Whisper's hallucination_silence_threshold) moved Whisper's
         # windows and made it skip real speech on the test set (results/2026-10-15-vad.md).

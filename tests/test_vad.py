@@ -52,16 +52,6 @@ def test_digital_silence_has_no_regions(tmp_path):
     assert speech_regions(synth(tmp_path / "c.wav", [("silence", 3)])) == []
 
 
-@requires_ffmpeg
-def test_speech_audio_concatenates_regions_up_to_limit(tmp_path):
-    from parola.audio.vad import speech_audio
-
-    wav = synth(tmp_path / "d.wav", [("silence", 2), ("tone", 1), ("silence", 3), ("tone", 2)])
-    audio = speech_audio(wav, [(2.0, 3.0), (6.0, 8.0)], max_seconds=2.5)
-    assert audio.dtype.name == "float32" and len(audio) == int(2.5 * 16000)
-    assert abs(audio).max() > 0.1  # only sound, no leading silence
-
-
 def test_chunks_group_close_regions_and_split_long_ones():
     from parola.audio.vad import chunks
 
