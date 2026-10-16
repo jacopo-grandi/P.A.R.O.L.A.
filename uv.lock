@@ -1004,6 +1004,8 @@ dependencies = [
     { name = "parakeet-mlx" },
     { name = "pydantic" },
     { name = "python-docx" },
+    { name = "sherpa-onnx" },
+    { name = "sherpa-onnx-core" },
     { name = "uvicorn" },
     { name = "wordfreq" },
 ]
@@ -1018,10 +1020,6 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-diarization = [
-    { name = "sherpa-onnx" },
-    { name = "sherpa-onnx-core" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -1033,6 +1031,8 @@ requires-dist = [
     { name = "parakeet-mlx", specifier = ">=0.5.3" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "python-docx", specifier = ">=1.2.0" },
+    { name = "sherpa-onnx", specifier = ">=1.13" },
+    { name = "sherpa-onnx-core", specifier = ">=1.13" },
     { name = "uvicorn", specifier = ">=0.54.0" },
     { name = "wordfreq", specifier = ">=3.1" },
 ]
@@ -1044,10 +1044,6 @@ dev = [
     { name = "pre-commit", specifier = ">=3.7" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
-]
-diarization = [
-    { name = "sherpa-onnx", specifier = ">=1.13" },
-    { name = "sherpa-onnx-core", specifier = "==1.13.8" },
 ]
 
 [[package]]

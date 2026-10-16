@@ -6,6 +6,7 @@ from io import BytesIO
 
 from parola.capture.recorder import LABELS
 from parola.schema import Transcript, format_timestamp
+from parola.speakers import label as speaker_label
 
 
 def to_docx(t: Transcript, name: str) -> bytes:
@@ -20,7 +21,7 @@ def to_docx(t: Transcript, name: str) -> bytes:
                           "trascrizione dice altro).")  # fmt: skip
     for seg in t.segments:
         p = doc.add_paragraph()
-        label = LABELS.get(seg.channel or "", "?")
+        label = speaker_label(t, seg, LABELS)
         stamp = format_timestamp(seg.start)[:8]
         head = p.add_run(f"{label} · {stamp}  " if label else f"{stamp}  ")
         head.bold = True

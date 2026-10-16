@@ -200,3 +200,30 @@ def test_suggestions_come_only_from_your_own_corrections(client):
     assert (s["term"], s["count"], s["exact"]) == ("Orto-Lab", 2, True)
     rec = client.get("/api/recordings/call").json()
     assert rec["segments"][0]["text"] == "Orto-Lab a Orto-Lab"  # nothing changed by itself
+
+
+def test_voices_can_be_renamed_and_turns_moved(client, folder):
+    from parola.schema import Transcript
+
+    t = Transcript.load(folder / "call.json")
+    t.segments[1].speaker = "system:1"
+    t.save(folder / "call.json")
+    rec = client.get("/api/recordings/call").json()
+    assert rec["voices"] == {"system:1": "Altri 1"}
+    rec = client.post(
+        "/api/recordings/call/voices", json={"id": "system:1", "name": " Giulia "}
+    ).json()
+    assert rec["voices"] == {"system:1": "Giulia"} and rec["summary"]["edits"] == 0
+    assert "Giulia: buongiorno" in (folder / "call.txt").read_text()
+    rec = client.post("/api/recordings/call/speaker", json={"segment": 1, "speaker": "new"}).json()
+    assert rec["segments"][1]["speaker"] == "system:2" and rec["voices"]["system:2"] == "Altri 2"
+    assert (
+        client.post(
+            "/api/recordings/call/speaker", json={"segment": 0, "speaker": "new"}
+        ).status_code
+        == 400
+    )
+    assert client.post("/api/recordings/call/speaker",
+                       json={"segment": 1, "speaker": "mixed:1"}).status_code == 400  # fmt: skip
+    rec = client.post("/api/recordings/call/undo").json()
+    assert rec["segments"][1]["speaker"] == "system:1"

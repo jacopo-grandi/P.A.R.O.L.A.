@@ -20,3 +20,10 @@ def tone_m4a(tmp_path: Path) -> Path:
         check=True,
     )  # fmt: skip
     return path
+
+
+@pytest.fixture(autouse=True)
+def no_speaker_models(monkeypatch):
+    """Tests never run (or download) the real voice models: they would depend on this machine.
+    A test that needs voices patches ``parola.diarize.diarize`` with a fake."""
+    monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: False)

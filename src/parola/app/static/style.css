@@ -201,6 +201,19 @@ input.inline {
 .who { grid-column: 2; margin-top: 18px; font-size: var(--text-caption); font-weight: 600;
        color: var(--fg-3); }
 .who.mic { color: var(--accent); }
+.who.voice { justify-self: start; padding: 0 4px; margin-left: -4px; border-radius: 4px;
+             text-align: left; font: inherit; font-size: var(--text-caption); font-weight: 600;
+             color: var(--fg-2); cursor: text; }
+.who.voice:hover { background: var(--hover); color: var(--fg); }
+.voice-input { grid-column: 2; justify-self: start; margin-top: 14px; width: 200px;
+               font-size: var(--text-caption); font-weight: 600; }
+.turn .t { position: relative; }
+.turn-voice { position: absolute; left: -14px; top: 0; width: 14px; line-height: inherit;
+              color: var(--fg-3); opacity: 0; }
+.turn:hover .turn-voice, .turn-voice:focus-visible, .t:has(.menu) .turn-voice { opacity: 1; }
+.turn .t .menu { top: 24px; left: 0; right: auto; text-align: left; font-family: var(--font-ui); }
+.menu .current { color: var(--fg); font-weight: 600; }
+.icon-btn.on-voices { color: var(--fg); }
 .turn .text { font: var(--read-size)/var(--read-leading) var(--font-read); color: #e8e8ed;
               text-wrap: pretty; overflow-wrap: break-word;
               max-width: calc(var(--read-ems) * 1em); }

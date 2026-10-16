@@ -47,6 +47,8 @@ const ICONS = {
   upload: '<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11' +
           'a1.5 1.5 0 0 0 1.5-1.5V14"/>',
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
+  people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/>' +
+          '<circle cx="17" cy="9" r="2.4"/><path d="M15.8 14.2c2.4.1 4 1.7 4.7 4.3"/>',
 };
 
 function icon(name, size = 16) {
@@ -560,8 +562,8 @@ function relabel() {
   for (const turn of view.body.querySelectorAll(".turn")) {
     if (turn.classList.contains("hidden")) continue;
     const who = turn.querySelector(".who");
-    who.hidden = !who.textContent || turn.dataset.channel === prev;
-    prev = turn.dataset.channel;
+    who.hidden = !who.textContent || turn.dataset.key === prev;
+    prev = turn.dataset.key;
   }
 }
 
@@ -610,10 +612,22 @@ async function render(data, after) {
     });
     const first = words[words.length - list.length];
     // lang per line: an English line is hyphenated and read aloud as English.
+    const voiced = VOICED.includes(channel) && Object.keys(rec.voices || {}).length > 0;
+    const key = showVoices && seg.speaker ? seg.speaker : channel;
+    const who = showVoices && seg.speaker
+      ? el("button", { class: `who voice ${channel}`, title: "Clic per dare un nome a questa voce",
+                       onclick: e => renameVoice(e.currentTarget, seg.speaker) },
+          rec.voices[seg.speaker] || seg.speaker)
+      : el("div", { class: `who ${channel}` }, LABELS[channel] ?? channel);
     body.append(el("div", { class: "turn", lang: seg.lang || null, "data-channel": channel,
-                            "data-doubt": seg.words.some(w => w.doubtful) },
-      el("div", { class: `who ${channel}` }, LABELS[channel] ?? channel),
-      el("span", { class: "t", onclick: () => play(first) }, clock(seg.start)),
+                            "data-key": key, "data-doubt": seg.words.some(w => w.doubtful) },
+      who,
+      // The voice menu lives in the time column: its clicks must not start the audio.
+      el("span", { class: "t", onclick: e => { if (!e.target.closest(".menu, .turn-voice")) play(first); } },
+        clock(seg.start),
+        voiced && showVoices ? el("button", {
+          class: "turn-voice", title: "Di chi è questa battuta", "aria-label": "Cambia voce",
+          onclick: e => { e.stopPropagation(); voiceMenu(e.currentTarget, si); } }, "•") : null),
       text));
   });
   if (runs.length) {
@@ -626,10 +640,19 @@ async function render(data, after) {
   view.heading = el("div", { class: "heading" });
   view.filter = iconButton("filter", "Solo le righe con parole dubbie",
     () => { onlyDoubts = !onlyDoubts; applyFilter(); });
+  // Voices (decision 0026): shown by default, hidden with one click when they are more noise
+  // than help; the choice is remembered in this browser.
+  const voicesBtn = Object.keys(rec.voices || {}).length
+    ? iconButton("people", showVoices ? "Nascondi chi parla" : "Mostra chi parla", () => {
+        showVoices = !showVoices;
+        try { localStorage.setItem("voices", showVoices ? "1" : "0"); } catch (e) { /* not kept */ }
+        render(rec, {});
+      }, showVoices ? "on-voices" : "")
+    : null;
   const more = iconButton("more", "Esporta", e => { e.stopPropagation(); exportMenu(actions); });
   const undoBtn = iconButton("undo", "Annulla l'ultima modifica (⌘Z)", undo);
   undoBtn.disabled = !rec.summary.edits;
-  const actions = el("div", { class: "actions" }, view.filter, undoBtn, more);
+  const actions = el("div", { class: "actions" }, voicesBtn, view.filter, undoBtn, more);
   view.findInput = el("input", { class: "find-input", type: "search",
                                  placeholder: "Trova nella call  ⌘F",
                                  "aria-label": "Trova nella call", autocomplete: "off" });
@@ -707,6 +730,60 @@ async function render(data, after) {
     item.to_review = rec.summary.to_review;
     renderCalls();
   }
+}
+
+// ---------------------------------------------------------------- voices
+
+const VOICED = ["system", "mixed"];  // channels that can hold several voices
+let showVoices = true;
+try { showVoices = localStorage.getItem("voices") !== "0"; } catch (e) { /* default: shown */ }
+
+function renameVoice(button, id) {
+  // The label becomes a field; Enter gives the voice its name for the whole call.
+  const before = rec.voices[id] || id;
+  const input = el("input", { class: "inline voice-input", value: before, maxlength: "60",
+                              "aria-label": "Nome della voce" });
+  button.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async save => {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    if (save && value !== before) {
+      try { await render(await postJSON(`/api/recordings/${enc(recName)}/voices`,
+                                        { id, name: value }), {}); return; }
+      catch (e) { toast(`Nome non salvato: ${e.message}`); }
+    }
+    input.replaceWith(button);
+  };
+  input.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+function voiceMenu(anchor, segment) {
+  // "Whose line is this?": the voices of this channel, a new one, nothing else.
+  const seg = rec.segments[segment];
+  const ids = Object.keys(rec.voices).filter(v => v.startsWith(`${seg.channel}:`));
+  const move = async speaker => {
+    try {
+      await render(await postJSON(`/api/recordings/${enc(recName)}/speaker`,
+                                  { segment, speaker }), {});
+    } catch (e) { toast(`Voce non cambiata: ${e.message}`); }
+  };
+  const holder = anchor.parentElement;
+  popMenu(holder,
+    ...ids.map(v => el("button", { role: "menuitemradio", "aria-checked": String(v === seg.speaker),
+                                   class: v === seg.speaker ? "current" : "",
+                                   onclick: () => { if (v !== seg.speaker) move(v); } },
+      rec.voices[v])),
+    el("hr"),
+    el("button", { role: "menuitem", onclick: () => move("new") }, "Nuova voce"));
 }
 
 // ---------------------------------------------------------------- find in the call

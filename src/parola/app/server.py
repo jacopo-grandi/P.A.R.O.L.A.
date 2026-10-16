@@ -26,6 +26,8 @@ from parola.audio import channel_file
 from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
 from parola.schema import Transcript, format_timestamp
+from parola.speakers import label as speaker_label
+from parola.speakers import name as speaker_name
 
 STATIC = Path(__file__).resolve().parent / "static"
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -83,6 +85,16 @@ class Rename(BaseModel):
     title: str
 
 
+class SpeakerChange(BaseModel):
+    segment: int
+    speaker: str | None = None  # an existing voice id, "new" for a new voice, None for none
+
+
+class VoiceName(BaseModel):
+    id: str
+    name: str
+
+
 class Span(BaseModel):
     segment: int
     start: int
@@ -116,7 +128,7 @@ def owned_files(folder: Path, name: str) -> list[Path]:
 def to_markdown(t: Transcript, name: str) -> str:
     lines = [f"# {name}", ""]
     for s in t.segments:
-        label = LABELS.get(s.channel or "", "?")
+        label = speaker_label(t, s, LABELS)
         who = f"**{label}** · " if label else ""
         lines.append(f"{who}{format_timestamp(s.start)[:8]} — {marked_text(s)}")
         lines.append("")
@@ -244,6 +256,10 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
             raise HTTPException(status_code=404, detail="no such recording")
         data = json.loads(path.read_text(encoding="utf-8"))
         data["summary"] = summary(folder, name)
+        t = Transcript.model_validate(data)
+        ids = sorted({sg.speaker for sg in t.segments if sg.speaker},
+                     key=lambda v: (v.split(":")[0], int(v.split(":")[1])))  # fmt: skip
+        data["voices"] = {v: speaker_name(t, v) for v in ids}
         data["audio"] = {c: f"/audio/{name}/{c}" for c in CHANNELS
                          if channel_file(folder, name, c)}  # fmt: skip
         return data
@@ -321,6 +337,38 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
 
         t, _ = _load(name)
         return {"title": suggest_title(t), "phrases": [p.text for p in key_phrases(t, 8)]}
+
+    @app.post("/api/recordings/{name}/speaker")
+    def change_speaker(name: str, req: SpeakerChange) -> dict:
+        """The person moves one turn to another voice (decision 0026); undone like any edit."""
+        t, path = _load(name)
+        if not 0 <= req.segment < len(t.segments):
+            raise HTTPException(status_code=400, detail=f"no segment {req.segment}")
+        seg = t.segments[req.segment]
+        if seg.channel not in ("system", "mixed"):
+            raise HTTPException(status_code=400, detail="the microphone is always you")
+        speaker = req.speaker
+        if speaker == "new":
+            used = [int(v.split(":")[1]) for v in {sg.speaker for sg in t.segments}
+                    if v and v.startswith(f"{seg.channel}:")]  # fmt: skip
+            speaker = f"{seg.channel}:{max(used, default=0) + 1}"
+        elif speaker is not None and not speaker.startswith(f"{seg.channel}:"):
+            raise HTTPException(status_code=400, detail="a voice of another channel")
+        editing.set_speaker(t, req.segment, speaker)
+        return _store(t, path, name)
+
+    @app.post("/api/recordings/{name}/voices")
+    def name_voice(name: str, req: VoiceName) -> dict:
+        """A name for a voice, for the whole call: a label, not an edit of the transcript."""
+        t, path = _load(name)
+        title = " ".join(req.name.split())[:60]
+        if title:
+            t.metadata.speakers[req.id] = title
+        else:
+            t.metadata.speakers.pop(req.id, None)
+        t.save(path)
+        (folder / f"{name}.txt").write_text(to_dialogue(t), encoding="utf-8")
+        return get_recording(name)
 
     @app.post("/api/recordings/{name}/undo")
     def undo(name: str) -> dict:

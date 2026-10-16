@@ -94,11 +94,26 @@ def confirm(t: Transcript, segment: int, start: int, end: int) -> Edit:
     return edit
 
 
+def set_speaker(t: Transcript, segment: int, speaker: str | None) -> Edit:
+    """The person says segment ``segment`` was said by ``speaker`` (decision 0026)."""
+    if not 0 <= segment < len(t.segments):
+        raise EditError(f"no segment {segment}")
+    seg = t.segments[segment]
+    edit = Edit(kind="speaker", segment=segment, start=0, before=[], after_count=0,
+                text=speaker or "", previous=seg.speaker, at=datetime.now(UTC))  # fmt: skip
+    seg.speaker = speaker
+    t.edits.append(edit)
+    return edit
+
+
 def undo(t: Transcript) -> Edit | None:
     """Revert the last edit; returns it, or None if there is nothing to undo."""
     if not t.edits:
         return None
     edit = t.edits.pop()
+    if edit.kind == "speaker":
+        t.segments[edit.segment].speaker = edit.previous
+        return edit
     words = t.segments[edit.segment].words
     words[edit.start : edit.start + edit.after_count] = [w.model_copy() for w in edit.before]
     _refresh(t, edit.segment)

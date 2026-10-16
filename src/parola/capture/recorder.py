@@ -28,6 +28,7 @@ from parola.keywords import suggest_title
 from parola.pipeline import transcribe_file
 from parola.schema import Metadata, Segment, Transcript, to_text
 from parola.schema.vocab import split_punctuation
+from parola.speakers import label as speaker_label
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SWIFT_DIR = Path(__file__).resolve().parent / "swift"
@@ -166,7 +167,7 @@ def to_dialogue(transcript: Transcript) -> str:
     """Readable text with the speaker side of each segment and the doubtful words marked."""
     lines = []
     for line, seg in zip(to_text(transcript).splitlines(), transcript.segments, strict=True):
-        label = LABELS.get(seg.channel or "", "?")
+        label = speaker_label(transcript, seg, LABELS)
         stamp, _, _ = line.partition("] ")
         who = f"{label}: " if label else ""
         lines.append(f"{stamp}] {who}{marked_text(seg)}")
@@ -223,8 +224,8 @@ def mark_doubts(primary: Transcript, second: Transcript) -> int:
 
 
 def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | None = None,
-                         second: ASRBackend | None = None,
-                         progress=None) -> tuple[Path, Path]:  # fmt: skip
+                         second: ASRBackend | None = None, progress=None,
+                         speakers: bool = True) -> tuple[Path, Path]:  # fmt: skip
     """Transcribe each channel and write <name>.json and <name>.txt next to the audio.
 
     With ``second``, each channel is also transcribed by a second system and the words of the
@@ -248,8 +249,13 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         raise CaptureError("every channel is silent: nothing to transcribe")
     # Progress in units of work: Whisper takes about four times as long as Parakeet on the same
     # audio (RTF 0.047 vs 0.013, results/2026-10-15-adjudicated.md), so its steps weigh more.
-    weights = {"primary": 4.0, "second": 1.0}
+    # Telling voices apart (decision 0026) runs on the channels with several people on them.
+    voiced = [c for c in with_speech if c in VOICED_CHANNELS] if speakers else []
+    if voiced:
+        voiced = _speaker_models() and voiced
+    weights = {"primary": 4.0, "second": 1.0, "speakers": 1.0}
     total_steps = len(with_speech) * (weights["primary"] + (weights["second"] if second else 0))
+    total_steps += len(voiced or []) * weights["speakers"]
     done = 0.0
 
     def run(engine: ASRBackend, kind: str, path: Path, out_dir: Path, message: str) -> Transcript:
@@ -290,6 +296,24 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     parts = {c: merge_segments(t) for c, t in parts.items()}
     duration = max(rec.capture[c]["seconds"] for c in with_speech)
     merged = merge_channels(parts, f"{rec.name}.*.wav", duration)
+    for channel in voiced or []:
+        from parola import diarize
+        from parola.speakers import assign
+
+        def report(share: float, base: float = done) -> None:
+            if progress is not None:
+                progress("chi parla", base + weights["speakers"] * share, total_steps)
+
+        report(0.0)
+        try:
+            turns = diarize.diarize(rec.path(channel), progress=report)
+        except Exception as e:  # the transcript is still good without the voices
+            print(f"warning: voices not told apart on {channel}: {e}", file=sys.stderr)
+            turns = []
+        merged = assign(merged, channel, turns)
+        done += weights["speakers"]
+    if voiced:
+        merged = merge_segments(merged)
     json_path = rec.out_dir / f"{rec.name}.json"
     txt_path = rec.out_dir / f"{rec.name}.txt"
     # A title from what was said (decision 0020): only a label, the person can change it.
@@ -299,6 +323,27 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     txt_path.write_text(to_dialogue(merged), encoding="utf-8")
     compress_channels(rec)
     return json_path, txt_path
+
+
+# Channels that can hold several voices: the others in a call, everyone in an imported file.
+VOICED_CHANNELS = ("system", "mixed")
+
+
+def _speaker_models() -> bool:
+    """sherpa-onnx is there and its models are, or can be fetched now (first use only)."""
+    from parola import diarize
+
+    if not diarize.installed():
+        return False
+    if diarize.available():
+        return True
+    try:
+        diarize.ensure_models()
+    except Exception as e:  # offline on first use: try again next time
+        print(f"warning: speaker models not downloaded ({e}); voices not told apart",
+              file=sys.stderr)  # fmt: skip
+        return False
+    return True
 
 
 def compress_channels(rec: Recording) -> None:

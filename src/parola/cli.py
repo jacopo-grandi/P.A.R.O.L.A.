@@ -6,6 +6,7 @@ parola serve                          local web UI for the recorded calls
 parola titles                         suggested titles next to the ones you chose
 parola compress [--dry-run]           lossless FLAC for calls still stored as wav
 parola glossary                       terms learned from your corrections
+parola speakers <name>                tell the voices apart on a call already transcribed
 parola validate <transcript.json>     check a reference against docs/conventions.md
 parola annotate draft <asr.json>      ASR transcript -> editable <name>.ann.txt
 parola annotate import <name.ann.txt> edited annotation -> validated <name>.ref.json
@@ -94,6 +95,10 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--dir", type=Path, default=Path("data/private/calls"),
                     help="folder with the recordings (default: data/private/calls)")  # fmt: skip
     sv.add_argument("--port", type=int, default=8765)
+
+    sp = sub.add_parser("speakers", help="tell the voices apart on a call already transcribed")
+    sp.add_argument("name")
+    sp.add_argument("--dir", type=Path, default=Path("data/private/calls"))
 
     gl = sub.add_parser("glossary", help="terms learned from your corrections")
     gl.add_argument("--dir", type=Path, default=Path("data/private/calls"))
@@ -239,6 +244,39 @@ def cmd_record(args) -> int:
     return main_record(args.out, args.name, make_engine(args.engine), language,
                        args.duration, not args.no_mic, not args.no_system,
                        second=second)  # fmt: skip
+
+
+def cmd_speakers(args) -> int:
+    """Voices on the channels that can hold several (decision 0026), for an existing call."""
+    from parola import diarize
+    from parola.annotate import merge_segments
+    from parola.audio import channel_file
+    from parola.capture.recorder import VOICED_CHANNELS, to_dialogue
+    from parola.schema import Transcript
+    from parola.speakers import assign
+
+    path = args.dir / f"{args.name}.json"
+    t = Transcript.load(path)
+    if t.edits:
+        print("error: the call has edits; their segment numbers would no longer match",
+              file=sys.stderr)  # fmt: skip
+        return 1
+    if not diarize.installed():
+        print("error: sherpa-onnx is not installed", file=sys.stderr)
+        return 1
+    diarize.ensure_models()
+    for channel in VOICED_CHANNELS:
+        audio = channel_file(args.dir, args.name, channel)
+        if audio is None or not any(s.channel == channel for s in t.segments):
+            continue
+        turns = diarize.diarize(audio)
+        t = assign(t, channel, turns)
+        voices = sorted({s.speaker for s in t.segments if s.speaker and s.channel == channel})
+        print(f"{channel}: {len(voices)} voices")
+    t = merge_segments(t)
+    t.save(path)
+    (args.dir / f"{args.name}.txt").write_text(to_dialogue(t), encoding="utf-8")
+    return 0
 
 
 def cmd_glossary(args) -> int:
@@ -593,6 +631,7 @@ def main(argv: list[str] | None = None) -> int:
         ("titles", None): cmd_titles,
         ("compress", None): cmd_compress,
         ("glossary", None): cmd_glossary,
+        ("speakers", None): cmd_speakers,
         ("validate", None): cmd_validate,
         ("annotate", "draft"): cmd_annotate_draft,
         ("annotate", "import"): cmd_annotate_import,

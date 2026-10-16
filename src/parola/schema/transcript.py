@@ -102,6 +102,9 @@ class Metadata(BaseModel):
     # The title the app suggested (decision 0023): kept apart from ``title`` so suggestions can be
     # measured against what the person chose.
     title_suggested: str | None = None
+    # Names given to the voices found on a channel (decision 0026): speaker id -> name,
+    # "system:1" -> "Giulia". Without a name a voice shows as "Altri 1", "Voce 1", ...
+    speakers: dict[str, str] = Field(default_factory=dict)
     created_at: datetime
     # Files written before the rename (decision 0019) still say "ilat_version".
     parola_version: str = Field(validation_alias=AliasChoices("parola_version", "ilat_version"))
@@ -112,13 +115,15 @@ class Edit(BaseModel):
     were replaced by ``after_count`` words. ``before`` keeps the replaced words as they were, so
     the model's original text stays traceable and the edit can be undone."""
 
-    kind: Literal["correct", "confirm"]
+    kind: Literal["correct", "confirm", "speaker"]
     segment: int = Field(ge=0)
     start: int = Field(ge=0)
     before: list[Word]
     after_count: int = Field(ge=0)
     text: str
     at: datetime
+    # For a "speaker" edit: the voice the segment had before (``text`` is the new one).
+    previous: str | None = None
 
 
 class Transcript(BaseModel):

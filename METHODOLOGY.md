@@ -111,6 +111,17 @@ untouched model output is kept next to the transcript.
   ([report](results/2026-10-15-vad.md)). Earlier versions that shifted decoding windows lost
   speech (up to 27.9%) and were dropped ([analysis](results/2026-10-15-vad-analisi.md)).
 
+## Who speaks
+
+The others' channel and imported files can hold several voices. After transcription, sherpa-onnx
+(pyannote segmentation 3.0, MIT; WeSpeaker VoxCeleb ResNet34-LM, CC BY 4.0; about 70 MB in all,
+CPU only) finds where someone speaks; its pieces are regrouped by our own spectral clustering
+(NME-SC) over 3-second voice prints. On two AMI test meetings this gets the diarization error
+rate from 47% (sherpa-onnx alone) to 30%; pyannote reports 17-19% on the whole AMI test set.
+Voices show as "Altri 1", "Altri 2"..., can be named, and every turn can be moved to another
+voice and undone ([0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md),
+[results](results/2026-10-16-diarization-sherpa.md)).
+
 ## Storage
 
 After transcription each channel is stored as FLAC at 16 kHz mono 16-bit: the very signal the
@@ -188,3 +199,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0023](docs/decisions/0023-title-rules-that-generalize.md) | Title rules that generalize |
 | [0024](docs/decisions/0024-lossless-audio-after-transcription.md) | Lossless audio after transcription |
 | [0025](docs/decisions/0025-glossary-learned-from-corrections.md) | Glossary learned from corrections: suggests, never corrects |
+| [0026](docs/decisions/0026-who-speaks-with-sherpa-onnx.md) | Who speaks: sherpa-onnx with our own grouping, fixable by hand |

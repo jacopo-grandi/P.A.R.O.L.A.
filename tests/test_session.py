@@ -268,3 +268,26 @@ def test_status_names_the_imported_file(tmp_path, helper):
     st = session.import_file(tone(tmp_path / "u.m4a"), "Vacanze, intervista.m4a")
     assert st["source"] == "Vacanze, intervista.m4a"
     wait_for(session, "done")
+
+
+@requires_ffmpeg
+def test_voices_are_told_apart_on_an_imported_file(tmp_path, monkeypatch):
+    from parola.capture.recorder import Recording, transcribe_recording
+    from parola.schema import Transcript
+
+    monkeypatch.setattr("parola.capture.recorder._speaker_models", lambda: True)
+    # Fake turns: the first voice until 0.15 s, then a second one.
+    monkeypatch.setattr("parola.diarize.diarize",
+                        lambda path, progress=None: [(0.0, 0.15, 0), (0.15, 1.0, 1)])  # fmt: skip
+    tone(tmp_path / "c.mixed.wav")
+    rec = Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+    seen = []
+    transcribe_recording(rec, Fake("ciao a tutti"), "it", second=Fake("ciao a tutti"),
+                         progress=lambda m, d, t: seen.append(m))  # fmt: skip
+    t = Transcript.load(tmp_path / "c.json")
+    assert [(s.text, s.speaker) for s in t.segments] == [
+        ("ciao a", "mixed:1"),
+        ("tutti", "mixed:2"),
+    ]
+    assert "chi parla" in seen
+    assert "] Voce 1: ciao a" in (tmp_path / "c.txt").read_text()

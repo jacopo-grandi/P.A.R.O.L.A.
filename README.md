@@ -58,6 +58,7 @@ uv run parola serve                        # http://127.0.0.1:8765, local only
 uv run parola compress --dry-run           # calls still stored as wav, and their size
 uv run parola compress                     # lossless FLAC for them: ~100 MB per hour of call
 uv run parola glossary                     # terms learned from your corrections (suggested, never applied)
+uv run parola speakers NAME                # tell the voices apart on a call already transcribed
 ```
 
 **● Registra** in the sidebar records a call without the terminal: timer, live levels for both
@@ -76,8 +77,10 @@ The sidebar lists the calls by date. Its search box looks inside every transcrip
 and elided articles ignored: "perche" finds "perché", "impatto" finds "dell'impatto") and shows
 where each call says it; a result opens the call at that point, with every occurrence marked
 and Enter / Shift-Enter to move between them; the field at the top of a call (Cmd-F) searches that call. The ••• menu renames, suggests a title from the
-content, or deletes (with undo). In a call, doubtful words are highlighted and a click on a word
-plays the audio from there; the menu next to the timeline sets the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
+content, or deletes (with undo). The others in a call (and everyone in an imported file) are told apart as "Altri 1", "Altri 2"...:
+click a label to name the voice, use the dot next to a turn's time to move it to another voice
+(Cmd-Z undoes it), or hide the voices with the people button. In a call, doubtful words are
+highlighted and a click on a word plays the audio from there; the menu next to the timeline sets the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
 Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click
 edits any word, Cmd-Z undoes. Every change is logged with the model's original text, which is also
 kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the browser's print.
