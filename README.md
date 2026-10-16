@@ -7,27 +7,36 @@ English (including both mixed in the same sentence).
 "Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
 layer will be derived from the verbatim one, never the other way around.
 
-The command is `parola`. The old name `ilat` still works for now and prints a notice.
-
 How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
 
-Status: in development, now a native Mac app (Phase 8, see [`docs/PLAN.md`](docs/PLAN.md)).
+Status: in development; the native Mac app works (Phase 8, see [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Install the app
 
 On an Apple Silicon Mac with macOS 14 or later:
 
-```bash
-git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git
-cd P.A.R.O.L.A.
-./install.sh
-```
+1. **Install.** In Terminal:
 
-The script checks the tools (Swift, `uv`, `ffmpeg`) and asks before installing any, then builds
-`PAROLA.app` and offers to copy it to /Applications. On its first start the app asks to download
-the speech models (about 4.2 GB, once); after that, nothing goes over the network.
+   ```bash
+   git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git
+   cd P.A.R.O.L.A.
+   ./install.sh
+   ```
 
-Or let a coding agent do it: paste this into Claude Code, Codex or a similar agent on your Mac:
+   The script checks the tools (Swift, `uv`, `ffmpeg`) and asks before installing any, builds
+   `PAROLA.app`, and offers to copy it to /Applications and to open it.
+2. **Open P.A.R.O.L.A.** from /Applications (or Launchpad, Spotlight). It lives in the menu bar
+   too: closing the window keeps it ready to record.
+3. **Download the models.** On the first start a "Prima di iniziare" screen shows up by itself:
+   it lists the speech models, their licences and sizes (about 4.2 GB, once), and downloads them
+   only when you press **Scarica i modelli**, with a progress bar. After that, nothing goes over
+   the network.
+4. **Record.** Press **Registra** in the window or in the menu bar. The first time, macOS asks
+   for the microphone and for system audio: allow both. A small floating recorder stays on top
+   of your call; stop it and the transcript appears in the list.
+
+Or let a coding agent do step 1: paste this into Claude Code, Codex or a similar agent on your
+Mac:
 
 > Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/P.A.R.O.L.A. into my
 > home folder and follow the "Instructions for coding agents" in its INSTALL.md.
