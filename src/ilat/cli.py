@@ -236,6 +236,13 @@ def cmd_serve(args) -> int:
     if not args.dir.is_dir():
         print(f"error: {args.dir} does not exist", file=sys.stderr)
         return 1
+    import socket
+
+    with socket.socket() as probe:
+        if probe.connect_ex(("127.0.0.1", args.port)) == 0:
+            print(f"ilat: something is already running on http://127.0.0.1:{args.port} "
+                  "(probably ilat serve): open it, or use --port", file=sys.stderr)  # fmt: skip
+            return 1
     print(f"ilat: http://127.0.0.1:{args.port} (Ctrl-C to stop)", file=sys.stderr)
     # Bound to localhost only: the recordings never leave this machine.
     uvicorn.run(create_app(args.dir), host="127.0.0.1", port=args.port, log_level="warning")
