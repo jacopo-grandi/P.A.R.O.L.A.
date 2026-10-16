@@ -42,10 +42,10 @@ def test_correct_replaces_span_and_logs_original():
 
 def test_correct_can_change_the_number_of_words_and_delete():
     t = make()
-    editing.correct(t, 0, 1, 3, "baking soda KR4")
-    assert t.segments[0].text == "ci baking soda KR4 ok tutti."
+    editing.correct(t, 0, 1, 3, "baking soda QX4")
+    assert t.segments[0].text == "ci baking soda QX4 ok tutti."
     editing.correct(t, 0, 5, 6, "")
-    assert t.segments[0].text == "ci baking soda KR4 ok"
+    assert t.segments[0].text == "ci baking soda QX4 ok"
 
 
 def test_unchanged_text_is_a_confirmation():
@@ -58,7 +58,7 @@ def test_unchanged_text_is_a_confirmation():
 def test_undo_restores_the_original_words():
     t = make()
     before = t.segments[0].model_dump()
-    editing.correct(t, 0, 1, 3, "baking soda KR4")
+    editing.correct(t, 0, 1, 3, "baking soda QX4")
     editing.confirm(t, 0, 0, 1)
     editing.undo(t)
     editing.undo(t)

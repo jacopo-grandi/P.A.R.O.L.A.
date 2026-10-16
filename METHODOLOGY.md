@@ -330,7 +330,7 @@ phrase said at least twice replaces a better one it contains ("pizza margherita"
 
 On the six transcripts the rules were checked on (a check, not a measure): "Pomodori e basilico",
 "Olive e DOP", "Ripest tomato and seeds", "Pizza dough and seeds", "Baking soda e
-semi antichi", "Peperoni rossi e gialli".
+semi antichi", "Peperoni rossi e gialli". 
 
 ### 5. Measuring it on new calls
 
