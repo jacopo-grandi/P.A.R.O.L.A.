@@ -414,13 +414,13 @@ dependencies = [
     { name = "mlx-whisper" },
     { name = "num2words" },
     { name = "numpy" },
+    { name = "parakeet-mlx" },
     { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
 baselines = [
     { name = "crisperwhisper", extra = ["transformers"] },
-    { name = "parakeet-mlx" },
 ]
 dev = [
     { name = "pre-commit" },
@@ -434,14 +434,12 @@ requires-dist = [
     { name = "mlx-whisper", specifier = ">=0.4" },
     { name = "num2words", specifier = ">=0.5.14" },
     { name = "numpy", specifier = ">=2" },
+    { name = "parakeet-mlx", specifier = ">=0.5.3" },
     { name = "pydantic", specifier = ">=2.7" },
 ]
 
 [package.metadata.requires-dev]
-baselines = [
-    { name = "crisperwhisper", extras = ["transformers"], specifier = ">=2.0.3" },
-    { name = "parakeet-mlx", specifier = ">=0.5.3" },
-]
+baselines = [{ name = "crisperwhisper", extras = ["transformers"], specifier = ">=2.0.3" }]
 dev = [
     { name = "pre-commit", specifier = ">=3.7" },
     { name = "pytest", specifier = ">=8" },

@@ -34,6 +34,18 @@ uv run ilat transcribe call.m4a --out transcripts/
 Writes `<name>.json` (segments and words with timestamps) and `<name>.txt` (readable, one line
 per segment) next to the input, or into `--out`.
 
+### Recording a call
+
+```bash
+uv run ilat record                       # Ctrl-C to stop; files in data/private/calls/
+```
+
+Records your microphone ("Io") and the system audio ("Altri") with Core Audio taps (macOS 14.2+,
+no virtual driver), transcribes each side with Whisper turbo and marks the words a second
+transcription (Parakeet v3) does not confirm as `(doubtful?)` in the text. The first run asks for
+the microphone and system-audio recording permissions. Once the models are downloaded, nothing
+goes over the network.
+
 ### Writing reference transcripts
 
 ```bash

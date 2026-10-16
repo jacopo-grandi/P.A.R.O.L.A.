@@ -74,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("--no-mic", action="store_true", help="system audio only")
     rc.add_argument("--no-system", action="store_true", help="microphone only")
     rc.add_argument(
+        "--no-doubt",
+        action="store_true",
+        help="skip the second opinion (Parakeet v3) that marks doubtful words",
+    )
+    rc.add_argument(
         "--engine",
         choices=ENGINES,
         default="turbo",
@@ -207,8 +212,14 @@ def cmd_record(args) -> int:
     if args.engine == "crisper" and language is None:
         print("error: --engine crisper needs --lang it or --lang en", file=sys.stderr)
         return 1
+    second = None
+    if not args.no_doubt:
+        from ilat.asr.parakeet_backend import ParakeetBackend
+
+        second = ParakeetBackend()
     return main_record(args.out, args.name, make_engine(args.engine), language,
-                       args.duration, not args.no_mic, not args.no_system)  # fmt: skip
+                       args.duration, not args.no_mic, not args.no_system,
+                       second=second)  # fmt: skip
 
 
 def cmd_validate(args) -> int:
@@ -435,8 +446,27 @@ def cmd_adjudicate_apply(args) -> int:
     return 0
 
 
+def _models_for(args) -> list[str]:
+    """Model repos a command needs, to decide whether it can run offline."""
+    if args.command == "transcribe":
+        return [args.model]
+    if args.command == "record":
+        repos = [DEFAULT_MODEL if args.engine == "turbo" else "nyralabs/CrisperWhisper2.0_turbo"]
+        if not args.no_doubt:
+            repos.append("mlx-community/parakeet-tdt-0.6b-v3")
+        return repos
+    if args.command == "eval":
+        return sorted({SYSTEMS[n.strip()].model for n in args.systems.split(",") if n.strip()
+                       in SYSTEMS})  # fmt: skip
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if repos := _models_for(args):
+        from ilat.models import offline_if_cached
+
+        offline_if_cached(repos)
     handlers = {
         ("transcribe", None): cmd_transcribe,
         ("record", None): cmd_record,

@@ -45,6 +45,9 @@ class Word(BaseModel):
     lang: Lang | None = None
     probability: float | None = None
     tags: list[WordTag] = Field(default_factory=list)
+    # ASR output only: a second transcription disagrees here, the word is worth checking
+    # (ilat.doubt, decision 0014). Not a disfluency tag.
+    doubtful: bool = False
 
     @field_validator("text")
     @classmethod

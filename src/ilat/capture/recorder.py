@@ -25,6 +25,7 @@ from ilat.asr import ASRBackend
 from ilat.audio import extract_audio
 from ilat.pipeline import transcribe_file
 from ilat.schema import Metadata, Segment, Transcript, to_text
+from ilat.schema.vocab import split_punctuation
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SWIFT_DIR = Path(__file__).resolve().parent / "swift"
@@ -136,19 +137,58 @@ def merge_channels(parts: dict[str, Transcript], audio_file: str, duration: floa
 LABELS = {"mic": "Io", "system": "Altri"}
 
 
+def marked_text(seg: Segment) -> str:
+    """Segment text with runs of doubtful words as ``(word word?)``, like uncertain words in the
+    annotation format (docs/annotation.md)."""
+    if not seg.words:
+        return seg.text
+    out: list[str] = []
+    run: list[str] = []
+    for w in [*seg.words, None]:
+        if w is not None and w.doubtful:
+            run.append(w.text)
+            continue
+        if run:
+            body, punct = split_punctuation(" ".join(run))
+            out.append(f"({body}?){punct}")
+            run = []
+        if w is not None:
+            out.append(w.text)
+    return " ".join(out)
+
+
 def to_dialogue(transcript: Transcript) -> str:
-    """Readable text with the speaker side of each segment."""
+    """Readable text with the speaker side of each segment and the doubtful words marked."""
     lines = []
     for line, seg in zip(to_text(transcript).splitlines(), transcript.segments, strict=True):
         label = LABELS.get(seg.channel or "", "?")
-        stamp, _, text = line.partition("] ")
-        lines.append(f"{stamp}] {label}: {text}")
+        stamp, _, _ = line.partition("] ")
+        lines.append(f"{stamp}] {label}: {marked_text(seg)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | None = None
-                         ) -> tuple[Path, Path]:  # fmt: skip
-    """Transcribe each channel and write <name>.json and <name>.txt next to the audio."""
+def mark_doubts(primary: Transcript, second: Transcript) -> int:
+    """Flag the words of ``primary`` that ``second`` does not confirm; returns how many."""
+    from ilat.doubt import doubtful_words
+
+    flagged = doubtful_words(primary, second)
+    k = 0
+    for seg in primary.segments:
+        for w in seg.words:
+            w.doubtful = k in flagged
+            k += 1
+    return len(flagged)
+
+
+def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | None = None,
+                         second: ASRBackend | None = None) -> tuple[Path, Path]:  # fmt: skip
+    """Transcribe each channel and write <name>.json and <name>.txt next to the audio.
+
+    With ``second``, each channel is also transcribed by a second system and the words of the
+    primary transcript it does not confirm are marked as doubtful. On the test set Parakeet v3
+    catches about two thirds of turbo's errors while flagging 12% of the words
+    (results/2026-10-16-doubt-analisi.md).
+    """
     parts: dict[str, Transcript] = {}
     with_speech = []
     for c in rec.channels():
@@ -166,6 +206,12 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
         work = rec.out_dir / f".{rec.name}.{channel}"
         out = transcribe_file(rec.path(channel), backend, out_dir=work, language=language)
         parts[channel] = out.transcript
+        if second is not None:
+            other = transcribe_file(rec.path(channel), second, out_dir=work / "second",
+                                    language=language).transcript  # fmt: skip
+            n = mark_doubts(parts[channel], other)
+            total = sum(len(seg.words) for seg in parts[channel].segments)
+            print(f"{channel}: {n} doubtful words out of {total}", file=sys.stderr)
         shutil.rmtree(work, ignore_errors=True)
     duration = max(rec.capture[c]["seconds"] for c in with_speech)
     merged = merge_channels(parts, f"{rec.name}.*.wav", duration)
@@ -177,14 +223,15 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
 
 
 def main_record(out_dir: Path, name: str | None, backend: ASRBackend, language: str | None,
-                duration: float | None, mic: bool, system: bool) -> int:  # fmt: skip
+                duration: float | None, mic: bool, system: bool,
+                second: ASRBackend | None = None) -> int:  # fmt: skip
     name = name or datetime.now().strftime("call-%Y%m%d-%H%M%S")
     try:
         print(f"recording {out_dir / name}.*.wav — stop with Ctrl-C", file=sys.stderr)
         rec = record(out_dir, name, duration=duration, mic=mic, system=system)
         for c in rec.channels():
             print(f"{c}: {rec.capture[c]['seconds']:.1f} s", file=sys.stderr)
-        json_path, txt_path = transcribe_recording(rec, backend, language)
+        json_path, txt_path = transcribe_recording(rec, backend, language, second=second)
     except CaptureError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
