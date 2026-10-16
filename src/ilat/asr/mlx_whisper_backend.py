@@ -1,5 +1,7 @@
 """mlx-whisper backend (Apple Silicon)."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +89,45 @@ def sound_share(start: float, end: float, regions: list[tuple[float, float]]) ->
     return covered / (end - start)
 
 
+@contextmanager
+def carried_prompt(text: str | None) -> Iterator[None]:
+    """Put ``text`` at the start of Whisper's prompt on every window, not only the first one.
+
+    mlx-whisper prepends the initial prompt to the transcribed text and keeps only the last
+    n_ctx // 2 - 1 tokens of it, so after a minute or two of speech the initial prompt is gone.
+    This keeps ``text`` and fills the rest of the budget with the most recent text, like
+    openai-whisper's ``carry_initial_prompt``. The patch is active only inside the ``with``.
+    """
+    if not text:
+        yield
+        return
+    from mlx_whisper import decoding
+
+    original = decoding.DecodingTask._get_initial_tokens
+
+    def initial_tokens(self) -> tuple[int, ...]:
+        tokens = list(self.sot_sequence)
+        if prefix := self.options.prefix:
+            prefix_tokens = (self.tokenizer.encode(" " + prefix.strip())
+                             if isinstance(prefix, str) else list(prefix))  # fmt: skip
+            if self.sample_len is not None:
+                prefix_tokens = prefix_tokens[-(self.n_ctx // 2 - self.sample_len) :]
+            tokens = tokens + prefix_tokens
+        carried = self.tokenizer.encode(" " + text.strip())
+        prompt = self.options.prompt or []
+        if isinstance(prompt, str):
+            prompt = self.tokenizer.encode(" " + prompt.strip())
+        room = max(0, self.n_ctx // 2 - 1 - len(carried))
+        recent = list(prompt)[-room:] if room else []
+        return tuple([self.tokenizer.sot_prev, *carried, *recent, *tokens])
+
+    decoding.DecodingTask._get_initial_tokens = initial_tokens
+    try:
+        yield
+    finally:
+        decoding.DecodingTask._get_initial_tokens = original
+
+
 class MLXWhisperBackend:
     name = "mlx-whisper"
 
@@ -96,14 +137,21 @@ class MLXWhisperBackend:
         initial_prompt: str | None = None,
         seed: int = SEED,
         vad: bool = False,
+        glossary: str | None = None,
     ) -> None:
         self.model = model
         self.initial_prompt = initial_prompt
         self.seed = seed
         # Transcribe only the stretches with sound (ilat.audio.vad).
         self.vad = vad
+        # Terms carried in the prompt of every window (ilat.glossary).
+        self.glossary = glossary
 
     def transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
+        with carried_prompt(self.glossary):
+            return self._transcribe(wav_path, language)
+
+    def _transcribe(self, wav_path: Path, language: str | None = None) -> ASRResult:
         import mlx.core as mx
         import mlx_whisper
 

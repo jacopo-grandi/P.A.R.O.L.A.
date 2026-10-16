@@ -33,6 +33,8 @@ class System:
     prompt: bool = False
     kind: Literal["mlx-whisper", "parakeet", "crisper"] = "mlx-whisper"
     vad: bool = False
+    glossary: bool = False
+    glossary_carried: bool = True
 
     def backend(self, lang: str, seed: int = SEED) -> ASRBackend:
         # Optional backends are imported lazily: they need `uv sync --group baselines`.
@@ -45,7 +47,15 @@ class System:
 
             return CrisperBackend(self.model, seed=seed)
         prompt = DISFLUENCY_PROMPTS.get(lang) if self.prompt else None
-        return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed, vad=self.vad)
+        glossary = None
+        if self.glossary:
+            from ilat import glossary as g
+
+            glossary = g.prompt_text(g.load())
+        if glossary and not self.glossary_carried:
+            prompt, glossary = glossary, None
+        return MLXWhisperBackend(self.model, initial_prompt=prompt, seed=seed, vad=self.vad,
+                                 glossary=glossary)  # fmt: skip
 
     def language(self, lang: str) -> str | None:
         """Language passed to the backend for a file whose manifest language is ``lang``."""
@@ -59,6 +69,10 @@ SYSTEMS = {
         System("turbo-lang", "large-v3-turbo, language forced", force_language=True),
         System("turbo-vad", "large-v3-turbo, language detected, only stretches with sound (VAD)",
                vad=True),
+        System("turbo-glossary", "large-v3-turbo, personal glossary carried on every window",
+               glossary=True),
+        System("turbo-glossary-initial", "large-v3-turbo, personal glossary as initial prompt only",
+               glossary=True, glossary_carried=False),
         System("turbo-prompt", "large-v3-turbo, language detected, disfluency prompt",
                prompt=True),
         System("turbo-lang-prompt", "large-v3-turbo, language forced, disfluency prompt",

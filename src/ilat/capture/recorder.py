@@ -167,6 +167,42 @@ def to_dialogue(transcript: Transcript) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+# A mic segment is echo of the other side (headphones leaking into the microphone) when at
+# least this share of its words is said by the other side within ECHO_MARGIN_SECONDS.
+ECHO_SHARE = 0.6
+ECHO_MARGIN_SECONDS = 2.0
+
+
+def drop_echo(mic: Transcript, system: Transcript) -> int:
+    """Remove from ``mic`` the segments that repeat what ``system`` says at the same time."""
+    from collections import Counter
+
+    from ilat.eval.normalize import tokenize
+
+    timed: list[tuple[str, float]] = []
+    for seg in system.segments:
+        for tok in tokenize(seg.words, seg.lang or "it", "fidelity", "hyp"):
+            w = seg.words[tok.word_index]
+            t = (w.start + w.end) / 2 if w.start is not None and w.end is not None else seg.start
+            timed.append((tok.text, t))
+    kept, dropped = [], 0
+    for seg in mic.segments:
+        tokens = [t.text for t in tokenize(seg.words, seg.lang or "it", "fidelity", "hyp")]
+        if not tokens:
+            kept.append(seg)
+            continue
+        lo, hi = seg.start - ECHO_MARGIN_SECONDS, seg.end + ECHO_MARGIN_SECONDS
+        near = Counter(text for text, t in timed if lo <= t <= hi)
+        mine = Counter(tokens)
+        shared = sum(min(n, near[text]) for text, n in mine.items())
+        if shared / len(tokens) >= ECHO_SHARE:
+            dropped += 1
+        else:
+            kept.append(seg)
+    mic.segments = kept
+    return dropped
+
+
 def mark_doubts(primary: Transcript, second: Transcript) -> int:
     """Flag the words of ``primary`` that ``second`` does not confirm; returns how many."""
     from ilat.doubt import doubtful_words
@@ -213,6 +249,15 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
             total = sum(len(seg.words) for seg in parts[channel].segments)
             print(f"{channel}: {n} doubtful words out of {total}", file=sys.stderr)
         shutil.rmtree(work, ignore_errors=True)
+    if "mic" in parts and "system" in parts:
+        n = drop_echo(parts["mic"], parts["system"])
+        if n:
+            print(f"mic: dropped {n} segments that echo the other side", file=sys.stderr)
+    # Whisper cuts speech into very short segments: join those of the same side separated by
+    # at most 1 s (up to 30 s), as for annotation drafts. Words and their flags do not change.
+    from ilat.annotate import merge_segments
+
+    parts = {c: merge_segments(t) for c, t in parts.items()}
     duration = max(rec.capture[c]["seconds"] for c in with_speech)
     merged = merge_channels(parts, f"{rec.name}.*.wav", duration)
     json_path = rec.out_dir / f"{rec.name}.json"

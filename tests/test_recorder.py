@@ -152,3 +152,44 @@ def test_transcribe_recording_with_second_opinion(tmp_path):
     t = Transcript.load(json_path)
     assert [(w.text, w.doubtful) for w in t.segments[0].words] == [("canale", False), ("1", True)]
     assert txt_path.read_text().strip().endswith("Io: canale (1?)")
+
+
+def test_drop_echo_removes_mic_segments_repeating_the_other_side():
+    system = part(
+        Segment(
+            start=10,
+            end=13,
+            text="ci sono domande?",
+            lang="it",
+            words=[
+                Word(text="ci", start=10.0, end=10.3),
+                Word(text="sono", start=10.4, end=10.8),
+                Word(text="domande?", start=10.9, end=11.6),
+            ],
+        )
+    )
+    mic = part(
+        Segment(start=10.2, end=11.8, text="ci sono domande?", lang="it", words=[
+            Word(text="ci", start=10.2, end=10.4), Word(text="sono", start=10.5, end=10.9),
+            Word(text="domande?", start=11.0, end=11.8)]),
+        Segment(start=20, end=21, text="io ho una domanda", lang="it", words=[
+            Word(text=t, start=20.0, end=21.0) for t in ["io", "ho", "una", "domanda"]]),
+    )  # fmt: skip
+    assert recorder.drop_echo(mic, system) == 1
+    assert [s.text for s in mic.segments] == ["io ho una domanda"]
+
+
+@requires_ffmpeg
+def test_transcribe_recording_merges_close_segments(tmp_path):
+    _write(tmp_path / "c.mic.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mic": {"seconds": 1.0}})
+
+    class Fragmented:
+        name, model = "fake", "m"
+
+        def transcribe(self, wav_path, language=None):
+            return ASRResult(segments=[seg(0, 0.4, "ciao"), seg(0.6, 0.9, "a tutti"),
+                                       seg(5, 6, "dopo")], language="it")  # fmt: skip
+
+    json_path, _ = recorder.transcribe_recording(rec, Fragmented())
+    assert [s.text for s in Transcript.load(json_path).segments] == ["ciao a tutti", "dopo"]
