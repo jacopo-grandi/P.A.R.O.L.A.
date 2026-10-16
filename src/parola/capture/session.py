@@ -3,6 +3,7 @@
 One session at a time: ``start`` launches the capture helper with live levels, ``pause`` and
 ``resume`` cut a stretch out of both tracks, ``stop`` ends the capture and transcribes the call in
 a thread (same pipeline as ``parola record``), ``status`` tells the UI what is happening.
+``import_file`` runs the same transcription on an audio or video file, as one ``mixed`` track.
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
+from parola.audio import extract_audio, wav_duration
 from parola.capture.recorder import Recording, build_helper, transcribe_recording
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -147,6 +149,54 @@ class RecordingSession:
             self.state, self.message = "done", ""
         except Exception as e:  # shown in the UI; the audio files stay on disk
             self.state, self.message = "error", f"transcription failed: {e}"
+
+    # ---------------------------------------------------------------- importing a file
+
+    def import_file(self, upload: Path, original: str, language: str | None = None,
+                    started_at: datetime | None = None) -> dict:  # fmt: skip
+        """Transcribe an audio or video file like a recording (decision 0021).
+
+        ``upload`` is a temporary copy: it becomes ``<name>.mixed.wav`` (16 kHz mono, all voices
+        on one track) and is then removed. The name comes from the file's name.
+        """
+        with self._lock:
+            if self.state in ("recording", "transcribing"):
+                raise SessionError(f"already {self.state}")
+            name = self.free_name(original)
+            self.state, self.name, self.language = "transcribing", name, language
+            self.started, self.levels, self.message, self.step = None, {}, "conversione", (0, 0)
+            self.paused_at, self.paused_total = None, 0.0
+        threading.Thread(target=self._import, args=(upload, original, name, started_at),
+                         daemon=True).start()  # fmt: skip
+        return self.status()
+
+    def free_name(self, original: str) -> str:
+        """A file name like "Intervista Marco (1).m4a" as an unused recording name."""
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(original).stem).strip("-._")[:60] or "file"
+        name, k = stem, 2
+        while any((self.folder / f"{name}{s}").exists() for s in (".json", ".mixed.wav")):
+            name, k = f"{stem}-{k}", k + 1
+        return name
+
+    def _import(self, upload: Path, original: str, name: str,
+                started_at: datetime | None) -> None:  # fmt: skip
+        wav = self.folder / f"{name}.mixed.wav"
+        try:
+            extract_audio(upload, wav)
+            capture = {
+                "started_at": (started_at or datetime.now(UTC)).isoformat(),
+                "source": original,
+                "mixed": {"file": wav.name, "seconds": wav_duration(wav)},
+            }
+            (self.folder / f"{name}.capture.json").write_text(json.dumps(capture, indent=2))
+        except Exception as e:  # not audio, or no audio track: say so, keep nothing
+            wav.unlink(missing_ok=True)
+            reason = str(e).strip().splitlines()[-1] if str(e).strip() else type(e).__name__
+            self.state, self.message = "error", f"import failed: {reason}"
+            return
+        finally:
+            upload.unlink(missing_ok=True)
+        self._transcribe(Recording(name, self.folder, capture))
 
     def abort(self) -> None:
         """Stop the helper without transcribing (server shutdown)."""

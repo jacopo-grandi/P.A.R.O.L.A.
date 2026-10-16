@@ -1,8 +1,10 @@
 """Recording from the app, with a fake capture helper and fake ASR backends."""
 
+import json
 import stat
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -142,3 +144,67 @@ def test_helper_failure_is_reported(tmp_path):
     session.start(name="x")
     st = wait_for(session, "error", timeout=5)
     assert st["state"] == "error" and "no permission" in st["message"]
+
+
+def tone(path: Path, seconds: int = 1) -> Path:
+    import subprocess
+
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    f"sine=frequency=440:duration={seconds}", str(path)], check=True)  # fmt: skip
+    return path
+
+
+@requires_ffmpeg
+def test_import_a_file_like_a_recording(tmp_path, helper):
+    folder = tmp_path / "calls"
+    folder.mkdir()
+    backends = lambda: (Fake("ciao a tutti"), Fake("ciao a voi"))  # noqa: E731
+    session = RecordingSession(folder, binary=helper, backends=backends)
+    upload = tone(tmp_path / "upload.m4a")
+    started = datetime(2026, 10, 1, 9, 30, tzinfo=UTC)
+    st = session.import_file(upload, "Intervista Marco (1).m4a", "it", started)
+    assert st["state"] == "transcribing" and st["name"] == "Intervista-Marco-1"
+    with pytest.raises(SessionError):
+        session.start()
+    assert wait_for(session, "done")["state"] == "done"
+    t = Transcript.load(folder / "Intervista-Marco-1.json")
+    assert {s.channel for s in t.segments} == {"mixed"}
+    assert any(w.doubtful for s in t.segments for w in s.words)
+    capture = json.loads((folder / "Intervista-Marco-1.capture.json").read_text())
+    assert capture["source"] == "Intervista Marco (1).m4a"
+    assert capture["started_at"].startswith("2026-10-01T09:30")
+    assert (folder / "Intervista-Marco-1.mixed.wav").exists() and not upload.exists()
+    assert "] ciao a (tutti?)" in (folder / "Intervista-Marco-1.txt").read_text()  # no side label
+    assert session.free_name("Intervista Marco (1).m4a") == "Intervista-Marco-1-2"
+
+
+@requires_ffmpeg
+def test_a_file_without_audio_is_reported(tmp_path, helper):
+    session = RecordingSession(tmp_path, binary=helper, backends=lambda: (None, None))
+    bad = tmp_path / "notes.m4a"
+    bad.write_text("not audio")
+    session.import_file(bad, "notes.m4a")
+    st = wait_for(session, "error", timeout=10)
+    assert st["state"] == "error" and st["message"].startswith("import failed")
+    assert not list(tmp_path.glob("*.mixed.wav")) and not bad.exists()
+
+
+@requires_ffmpeg
+def test_api_import(tmp_path, helper):
+    backends = lambda: (Fake("buongiorno a tutti"), Fake("buongiorno a tutti"))  # noqa: E731
+    session = RecordingSession(tmp_path, binary=helper, backends=backends)
+    client = TestClient(create_app(tmp_path, session=session))
+    assert client.post("/api/import?filename=notes.txt", content=b"x").status_code == 415
+    audio = tone(tmp_path / "src.mp3").read_bytes()
+    r = client.post("/api/import?filename=riunione.mp3&modified=1790000000000&lang=it",
+                    content=audio)  # fmt: skip
+    assert r.json()["state"] == "transcribing" and r.json()["name"] == "riunione"
+    assert client.post("/api/import?filename=altra.mp3", content=audio).status_code == 409
+    assert wait_for(session, "done")["state"] == "done"
+    rec = client.get("/api/recordings/riunione").json()
+    assert rec["summary"]["source"] == "riunione.mp3"
+    assert list(rec["audio"]) == ["mixed"]
+    assert client.get("/audio/riunione/mixed").status_code == 200
+    assert not list((tmp_path / ".uploads").iterdir())
+    md = client.get("/export/riunione.md").text
+    assert "**" not in md.split("\n", 2)[2]  # no side label on a single-track file

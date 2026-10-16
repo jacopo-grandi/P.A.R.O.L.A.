@@ -108,6 +108,14 @@ untouched model output is kept next to the transcript.
   ([report](results/2026-10-15-vad.md)). Earlier versions that shifted decoding windows lost
   speech (up to 27.9%) and were dropped ([analysis](results/2026-10-15-vad-analisi.md)).
 
+## Imported files
+
+An audio or video file dropped into the app goes through the same pipeline as a recording:
+conversion to 16 kHz mono, VAD, turbo, Parakeet for the doubtful words, segment merging and the
+title. Every voice is on one track (channel `mixed`), so there is no "Io / Altri" split and no
+echo removal; telling the voices apart needs speaker diarization, planned after v1
+([0021](docs/decisions/0021-import-audio-and-video-files.md)).
+
 ## Derived layers
 
 - **Clean version:** only removes material (fillers, repetitions, false starts) by explicit rules,
@@ -153,3 +161,4 @@ Reports are written to `results/` with the commit they were produced from.
 | [0018](docs/decisions/0018-type-charter-and-sf.md) | Typography: Charter and SF |
 | [0019](docs/decisions/0019-rename-to-parola.md) | Rename to P.A.R.O.L.A. |
 | [0020](docs/decisions/0020-title-from-key-phrases.md) | Title from key phrases, without a language model |
+| [0021](docs/decisions/0021-import-audio-and-video-files.md) | Importing audio and video files |

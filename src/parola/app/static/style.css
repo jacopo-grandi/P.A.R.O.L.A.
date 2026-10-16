@@ -214,6 +214,17 @@ kbd { font: var(--text-caption) var(--font-num); padding: 0 4px; border: 1px sol
 
 .icon-btn:disabled { opacity: 0.3; cursor: default; background: none; }
 
+.drop {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.72); border: 2px dashed var(--fg-3); pointer-events: none;
+}
+.drop[hidden] { display: none; }
+.drop div { display: grid; gap: 4px; text-align: center; }
+.drop strong { font-size: var(--text-heading); font-weight: 600; }
+.drop span { font-size: var(--text-small); color: var(--fg-2); }
+.rec-row .rec-import { width: auto; height: auto; padding: 0 8px; border-radius: var(--radius);
+                       background: var(--raise); }
+
 .toast {
   position: fixed; left: 50%; bottom: 72px; transform: translate(-50%, 8px); z-index: 10;
   display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: 10px;

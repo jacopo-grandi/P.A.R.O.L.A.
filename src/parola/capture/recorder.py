@@ -3,7 +3,8 @@
 Capture is done by the Swift helper ``parola-capture`` (Core Audio process taps, decision 0013),
 built on first use with ``swiftc``. Each channel is transcribed separately and the two are
 merged into one transcript whose segments carry ``channel`` = ``mic`` (you) or ``system``
-(the others): turns are separated by channel, not guessed.
+(the others): turns are separated by channel, not guessed. An imported audio or video file is a
+single ``mixed`` channel, everyone on one track (decision 0021).
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from parola.schema.vocab import split_punctuation
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SWIFT_DIR = Path(__file__).resolve().parent / "swift"
 BINARY = REPO_ROOT / "bin" / "parola-capture"
-CHANNELS = ("mic", "system")
+CHANNELS = ("mic", "system", "mixed")
 # Peak below this (16-bit PCM) means digital silence: macOS returns zeros instead of an error
 # when the permission to record system audio is missing.
 SILENCE_PEAK = 8
@@ -135,7 +136,8 @@ def merge_channels(parts: dict[str, Transcript], audio_file: str, duration: floa
     )
 
 
-LABELS = {"mic": "Io", "system": "Altri"}
+# "mixed" (an imported file) has no side to name: every voice is on the one track.
+LABELS = {"mic": "Io", "system": "Altri", "mixed": ""}
 
 
 def marked_text(seg: Segment) -> str:
@@ -164,7 +166,8 @@ def to_dialogue(transcript: Transcript) -> str:
     for line, seg in zip(to_text(transcript).splitlines(), transcript.segments, strict=True):
         label = LABELS.get(seg.channel or "", "?")
         stamp, _, _ = line.partition("] ")
-        lines.append(f"{stamp}] {label}: {marked_text(seg)}")
+        who = f"{label}: " if label else ""
+        lines.append(f"{stamp}] {who}{marked_text(seg)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -234,8 +237,9 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
             continue
         if peak(rec.path(c)) < SILENCE_PEAK:
             # Transcribing silence makes Whisper invent text ("Thank you."): skip it.
-            print(f"warning: the {c} channel is silent; if that is unexpected, check "
-                  f"{PERMISSION_HINT[c]}", file=sys.stderr)  # fmt: skip
+            hint = PERMISSION_HINT.get(c, "the file's audio track")
+            print(f"warning: the {c} channel is silent; if that is unexpected, check {hint}",
+                  file=sys.stderr)  # fmt: skip
             continue
         with_speech.append(c)
     if not with_speech:
@@ -249,12 +253,13 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
 
     for channel in with_speech:
         work = rec.out_dir / f".{rec.name}.{channel}"
-        step(f"trascrizione {LABELS[channel]}")
+        side = f" {LABELS[channel]}" if LABELS[channel] else ""
+        step(f"trascrizione{side}")
         out = transcribe_file(rec.path(channel), backend, out_dir=work, language=language)
         done += 1
         parts[channel] = out.transcript
         if second is not None:
-            step(f"parole dubbie {LABELS[channel]}")
+            step(f"parole dubbie{side}")
             other = transcribe_file(rec.path(channel), second, out_dir=work / "second",
                                     language=language).transcript  # fmt: skip
             done += 1

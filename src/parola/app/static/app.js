@@ -1,7 +1,8 @@
 // P.A.R.O.L.A. local UI: calls in the sidebar, the transcript in the middle, doubtful words to review.
 "use strict";
 
-const LABELS = { mic: "Io", system: "Altri" };
+// "mixed": an imported file, every voice on one track, so no side to name.
+const LABELS = { mic: "Io", system: "Altri", mixed: "" };
 const LEAD = 0.25;         // start playing a little before the word
 const EXCERPT_TAIL = 1.0;  // a doubtful run plays until this long after its last word
 const LANGS = [["", "Auto"], ["it", "IT"], ["en", "EN"]];
@@ -41,6 +42,8 @@ const ICONS = {
         '<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>' +
         '<circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
   filter: '<path d="M4 7h16M7 12h10M10 17h4"/>',
+  upload: '<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11' +
+          'a1.5 1.5 0 0 0 1.5-1.5V14"/>',
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
 };
 
@@ -426,9 +429,9 @@ function renderHeading() {
   const when = new Date(s.started_at).toLocaleString("it-IT",
     { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit",
       minute: "2-digit" });
-  const who = s.channels.map(c => LABELS[c] || c).join(" e ");
+  const who = s.channels.map(c => LABELS[c] ?? c).filter(Boolean).join(" e ");
   const meta = `${when} · ${clock(s.duration)} · ${s.words.toLocaleString("it-IT")} parole` +
-               (who ? ` · ${who}` : "");
+               (who ? ` · ${who}` : "") + (s.source ? ` · da ${s.source}` : "");
   view.heading.replaceChildren(h1, el("div", { class: "meta" }, meta));
 }
 
@@ -447,7 +450,7 @@ function relabel() {
   for (const turn of view.body.querySelectorAll(".turn")) {
     if (turn.classList.contains("hidden")) continue;
     const who = turn.querySelector(".who");
-    who.hidden = turn.dataset.channel === prev;
+    who.hidden = !who.textContent || turn.dataset.channel === prev;
     prev = turn.dataset.channel;
   }
 }
@@ -499,7 +502,7 @@ async function render(data, after) {
     // lang per line: an English line is hyphenated and read aloud as English.
     body.append(el("div", { class: "turn", lang: seg.lang || null, "data-channel": channel,
                             "data-doubt": seg.words.some(w => w.doubtful) },
-      el("div", { class: `who ${channel}` }, LABELS[channel] || channel),
+      el("div", { class: `who ${channel}` }, LABELS[channel] ?? channel),
       el("span", { class: "t", onclick: () => play(first) }, clock(seg.start)),
       text));
   });
@@ -666,6 +669,7 @@ function buildLive(floating) {
 }
 
 function renderRecorder() {
+  if (uploading) return;  // the upload progress owns the recorder box until the file is sent
   const st = recState;
   const mode = st.state === "recording" ? "recording"
              : st.state === "transcribing" ? "transcribing" : `idle:${st.state}:${st.name}`;
@@ -691,18 +695,21 @@ function renderRecorder() {
       const start = el("button", { class: "rec-start",
                                    onclick: () => recAction("start", { lang: recLang || null }) },
         el("span", { class: "rec-dot" }), "Registra");
+      const pick = iconButton("upload", "Trascrivi un file audio o video", () => $file.click(),
+                              "rec-import");
       const note = st.state === "done" && st.name
         ? el("p", { class: "rec-note" }, "Trascritta: ",
              el("a", { href: `#/rec/${enc(st.name)}` }, "apri"))
         : st.state === "error" ? el("p", { class: "rec-note err" }, st.message) : null;
-      $recorder.replaceChildren(el("div", { class: "rec-row" }, start, lang), note || "");
+      $recorder.replaceChildren(el("div", { class: "rec-row" }, start, pick, lang), note || "");
     }
   }
   if (mode === "recording") for (const v of liveViews) v.update(st);
   if (mode === "transcribing") {
     const [done, total] = st.step || [0, 0];
     const pct = total ? Math.round((done / total) * 100) : 0;
-    busy.text.textContent = `Trascrizione… ${pct}%`;
+    busy.text.textContent = st.message === "conversione" ? "Conversione del file…"
+                                                         : `Trascrizione… ${pct}%`;
     busy.bar.style.width = `${pct}%`;
   }
 }
@@ -713,9 +720,88 @@ function setRecState(st) {
   recAt = Date.now();
   renderRecorder();
   if (prev.state === "transcribing" && st.state === "done") {
-    refreshCalls().then(() => { if (!rec && st.name) location.hash = `#/rec/${enc(st.name)}`; });
+    const open = !rec || st.name === imported;  // a file you just imported opens by itself
+    imported = null;
+    refreshCalls().then(() => { if (open && st.name) location.hash = `#/rec/${enc(st.name)}`; });
   }
 }
+
+// ---------------------------------------------------------------- importing a file
+
+const $file = el("input", { type: "file", accept: "audio/*,video/*", hidden: true,
+                            onchange: e => { if (e.target.files[0]) importFile(e.target.files[0]); } });
+document.body.append($file);
+let uploading = false;
+let imported = null;    // name of the call being imported from this window
+
+function importFile(file) {
+  // The raw file goes in the request body (no form encoding); progress from XHR.
+  if (["recording", "transcribing"].includes(recState.state) || uploading) {
+    toast("Aspetta che finisca la registrazione o la trascrizione in corso.");
+    return;
+  }
+  uploading = true;
+  const bar = el("i"), text = el("span", {}, `Caricamento di ${file.name}…`);
+  $recorder.replaceChildren(el("div", { class: "rec-busy" }, text,
+    el("div", { class: "bar" }, bar)));
+  const params = new URLSearchParams({ filename: file.name, modified: String(file.lastModified) });
+  if (recLang) params.set("lang", recLang);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `/api/import?${params}`);
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) bar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`;
+  };
+  xhr.onload = () => {
+    uploading = false;
+    $file.value = "";
+    let data = {};
+    try { data = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+    recMode = null;
+    if (xhr.status >= 300) {
+      renderRecorder();
+      toast(`File non importato: ${data.detail || xhr.status}`);
+      return;
+    }
+    imported = data.name;
+    setRecState(data);
+    poll();
+  };
+  xhr.onerror = () => {
+    uploading = false;
+    recMode = null;
+    renderRecorder();
+    toast("File non importato: il server non risponde.");
+  };
+  xhr.send(file);
+}
+
+// Drop a file anywhere on the window.
+let dragDepth = 0;
+const $drop = el("div", { class: "drop", hidden: true },
+  el("div", {}, el("strong", {}, "Rilascia per trascrivere"),
+    el("span", {}, "Audio o video: resta su questo Mac.")));
+document.body.append($drop);
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+window.addEventListener("dragenter", e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  $drop.hidden = false;
+});
+window.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener("dragleave", e => {
+  if (!hasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) $drop.hidden = true;
+});
+window.addEventListener("drop", e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $drop.hidden = true;
+  const file = e.dataTransfer.files[0];
+  if (file) importFile(file);
+});
 
 async function openFloating(auto) {
   if (pip) { pip.focus(); return; }

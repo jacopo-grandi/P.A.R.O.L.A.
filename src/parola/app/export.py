@@ -20,9 +20,9 @@ def to_docx(t: Transcript, name: str) -> bytes:
                           "trascrizione dice altro).")  # fmt: skip
     for seg in t.segments:
         p = doc.add_paragraph()
-        head = p.add_run(
-            f"{LABELS.get(seg.channel or '', '?')} · {format_timestamp(seg.start)[:8]}  "
-        )
+        label = LABELS.get(seg.channel or "", "?")
+        stamp = format_timestamp(seg.start)[:8]
+        head = p.add_run(f"{label} · {stamp}  " if label else f"{stamp}  ")
         head.bold = True
         words = seg.words or []
         if not words:

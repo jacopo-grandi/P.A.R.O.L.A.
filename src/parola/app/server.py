@@ -11,11 +11,11 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,7 +31,7 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 TRASH = ".trash"
 _TRASHED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)--\d{8}-\d{6}-\d{6}$")
 # Every file a recording owns. Listed, not globbed: "prova.*" would also catch "prova.2.json".
-OWNED = (".json", ".asr.json", ".capture.json", ".txt", ".mic.wav", ".system.wav")
+OWNED = (".json", ".asr.json", ".capture.json", ".txt", ".mic.wav", ".system.wav", ".mixed.wav")
 
 
 def _check(name: str) -> str:
@@ -47,7 +47,10 @@ def summary(folder: Path, name: str) -> dict:
     capture = json.loads(capture_path.read_text()) if capture_path.exists() else {}
     return {
         "name": name,
-        "title": t.metadata.title or name,
+        # No title yet: an imported file shows its own name ("Intervista Marco"), not the slug.
+        "title": t.metadata.title
+        or (Path(capture["source"]).stem if capture.get("source") else name),
+        "source": capture.get("source"),  # name of the imported file, if it was one
         "started_at": capture.get("started_at") or t.metadata.created_at.isoformat(),
         "duration": t.metadata.duration,
         "channels": sorted({s.channel for s in t.segments if s.channel}),
@@ -91,6 +94,13 @@ def recordings(folder: Path) -> list[str]:
     return names
 
 
+# Audio and video that ffmpeg reads; anything else is refused before it is uploaded.
+IMPORT_EXTENSIONS = frozenset([
+    ".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".opus", ".oga", ".webm", ".aiff", ".aif",
+    ".caf", ".wma", ".amr", ".mp4", ".mov", ".m4v", ".mkv", ".avi",
+])  # fmt: skip
+
+
 def owned_files(folder: Path, name: str) -> list[Path]:
     return [folder / f"{name}{s}" for s in OWNED if (folder / f"{name}{s}").exists()]
 
@@ -99,7 +109,8 @@ def to_markdown(t: Transcript, name: str) -> str:
     lines = [f"# {name}", ""]
     for s in t.segments:
         label = LABELS.get(s.channel or "", "?")
-        lines.append(f"**{label}** · {format_timestamp(s.start)[:8]} — {marked_text(s)}")
+        who = f"**{label}** · " if label else ""
+        lines.append(f"{who}{format_timestamp(s.start)[:8]} — {marked_text(s)}")
         lines.append("")
     return "\n".join(lines)
 
@@ -138,6 +149,29 @@ def create_app(folder: Path, session: RecordingSession | None = None) -> FastAPI
         try:
             return controls[action]()
         except SessionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    @app.post("/api/import")
+    async def import_file(request: Request, filename: str, lang: str | None = None,
+                          modified: int | None = None) -> dict:  # fmt: skip
+        """Body = the raw file. ``modified`` (ms) is the file's date, used as the call's date."""
+        ext = Path(filename).suffix.lower()
+        if ext not in IMPORT_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"not an audio or video file: {filename}")
+        if session.status()["state"] in ("recording", "transcribing"):
+            raise HTTPException(status_code=409, detail=f"already {session.status()['state']}")
+        uploads = folder / ".uploads"
+        uploads.mkdir(parents=True, exist_ok=True)
+        tmp = uploads / f"{datetime.now():%Y%m%d-%H%M%S-%f}{ext}"
+        with tmp.open("wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
+        started = datetime.fromtimestamp(modified / 1000, UTC) if modified else None
+        language = lang if lang in ("it", "en") else None
+        try:
+            return session.import_file(tmp, Path(filename).name, language, started)
+        except SessionError as e:
+            tmp.unlink(missing_ok=True)
             raise HTTPException(status_code=409, detail=str(e)) from e
 
     @app.get("/", response_class=HTMLResponse)

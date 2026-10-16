@@ -93,7 +93,18 @@ allora quindi cioè insomma diciamo praticamente tipo comunque appunto ecco boh 
 vabbè magari forse chiaramente ovviamente sicuramente fondamentalmente sostanzialmente
 eventualmente esattamente assolutamente perfetto bene benissimo grazie scusa scusate ciao
 guarda guardate senti sentite dai niente vero infatti mah uhm hmm basically like literally
-anyway okay alright sorry thanks please
+anyway okay alright sorry thanks please esatto certo giusto chiaro sisi nono
+"""
+    )
+)
+# Numbers said as words: "quattro vasi" names the pots, not the four.
+NUMBERS = frozenset(
+    _words(
+        """
+zero uno una due tre quattro cinque sei sette otto nove dieci undici dodici venti trenta
+quaranta cinquanta cento mille milione milioni miliardo miliardi primo prima secondo seconda
+terzo terza mezzo mezza one two three four five six seven eight nine ten hundred thousand
+million first second third half
 """
     )
 )
@@ -129,7 +140,7 @@ _FILLERS = _fillers()
 
 def _is_stop(word: str) -> bool:
     return (word in STOP_IT or word in STOP_EN or word in DISCOURSE or word in _FILLERS
-            or word in GENERIC or _looks_like_verb(word))  # fmt: skip
+            or word in GENERIC or word in NUMBERS or _looks_like_verb(word))  # fmt: skip
 
 
 def _looks_like_verb(word: str) -> bool:
