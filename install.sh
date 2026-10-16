@@ -84,7 +84,7 @@ ok "$repo/dist/PAROLA.app"
 app="$repo/dist/PAROLA.app"
 if ask "Copy P.A.R.O.L.A. to /Applications (Launchpad, Spotlight, Dock)?"; then
     if [ -d /Applications/PAROLA.app ]; then
-        osascript -e 'quit app "PAROLA"' >/dev/null 2>&1 || true
+        osascript -e 'quit app id "dev.parola.app"' >/dev/null 2>&1 || true
         rm -rf /Applications/PAROLA.app
     fi
     cp -R "$app" /Applications/PAROLA.app

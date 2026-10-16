@@ -23,6 +23,15 @@ done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
 rm -rf "$(dirname "$iconset")"
 
+# The name Finder, the Dock and Spotlight show: "P.A.R.O.L.A.", while the bundle stays PAROLA.app
+# (paths, scripts and the docs keep a plain name). Finder reads it only from a localization, and
+# only while the plain CFBundleDisplayName matches the file name (else it shows the file name).
+for lang in en it; do
+    mkdir -p "$app/Contents/Resources/$lang.lproj"
+    printf '"CFBundleDisplayName" = "P.A.R.O.L.A.";\n"CFBundleName" = "P.A.R.O.L.A.";\n' \
+        > "$app/Contents/Resources/$lang.lproj/InfoPlist.strings"
+done
+
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -32,7 +41,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIdentifier</key><string>dev.parola.app</string>
   <key>CFBundleName</key><string>PAROLA</string>
-  <key>CFBundleDisplayName</key><string>P.A.R.O.L.A.</string>
+  <key>CFBundleDisplayName</key><string>PAROLA</string>
+  <key>LSHasLocalizedDisplayName</key><true/>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
