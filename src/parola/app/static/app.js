@@ -395,10 +395,25 @@ function togglePlay() {
 }
 
 function seek(seconds) {
-  // Jump to the word being said at that time (on any channel), or just there.
+  // Jump to the word being said at that time (on any channel), or just there, and show it.
   const before = words.filter(w => w.start <= seconds);
   const w = before.length ? before.reduce((a, b) => (b.start > a.start ? b : a)) : words[0];
-  if (w) play(w);
+  if (w) { play(w); keepInView(w.el, true); }
+}
+
+// The transcript follows the word being played. When the person scrolls it (to read ahead or
+// back) it waits FOLLOW_PAUSE before following again; a click on the timeline always shows it.
+const FOLLOW_PAUSE = 4000;  // ms
+let scrolledByHand = 0;
+
+function keepInView(e, force) {
+  const box = view.scroll;
+  if (!box || !e || (!force && Date.now() - scrolledByHand < FOLLOW_PAUSE)) return;
+  const r = e.getBoundingClientRect(), b = box.getBoundingClientRect();
+  const margin = b.height * 0.15;
+  if (r.top < b.top + margin || r.bottom > b.bottom - margin) {
+    e.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
 }
 
 function mark(e) {
@@ -419,7 +434,10 @@ function follow(channel) {
   if (target && target.channel === channel && t < target.start) return;
   target = null;
   const w = words.find(w => w.channel === channel && w.start <= t && t < w.end);
-  if (w && w.el !== current) mark(w.el);
+  if (w && w.el !== current) {
+    mark(w.el);
+    if (!p.paused) keepInView(w.el);
+  }
 }
 
 function updateProgress(t) {
@@ -678,6 +696,10 @@ async function render(data, after) {
 
   view.body = body;
   view.scroll = el("div", { class: "scroll" }, body);
+  const byHand = () => { scrolledByHand = Date.now(); };
+  view.scroll.addEventListener("wheel", byHand, { passive: true });
+  view.scroll.addEventListener("touchmove", byHand, { passive: true });
+  view.scroll.addEventListener("pointerdown", e => { if (e.target === view.scroll) byHand(); });
 
   const total = duration();
   view.play = el("button", { class: "play", onclick: togglePlay });
