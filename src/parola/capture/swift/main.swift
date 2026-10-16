@@ -10,6 +10,11 @@
 // two files stay aligned with each other (the pause is cut out of both).
 // With --levels, prints the peak level of each track (dBFS) to stderr four times a second:
 //   LEVELS {"mic": -31.2, "system": -12.5}
+// Audio devices may change during a call: headphones plugged in or taken off, AirPods that drop
+// from 48 to 24 kHz when their microphone starts. Each side then restarts on the device in use;
+// the files keep the format they started with (the new audio is converted), and the moments the
+// restart took are filled with silence, so both files stay on the recording's clock. Every
+// change is listed in capture.json under "events" (the kind of device, never its name).
 
 import AVFoundation
 import AudioToolbox
@@ -44,6 +49,42 @@ func property<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelecto
     check(AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value),
           "reading property \(selector)")
     return value
+}
+
+/// Like ``property``, but nil when the object is gone (a device unplugged mid-call).
+func tryProperty<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ initial: T) -> T? {
+    var address = AudioObjectPropertyAddress(
+        mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    var size = UInt32(MemoryLayout<T>.size)
+    var value = initial
+    return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr ? value : nil
+}
+
+/// "Bluetooth, 24000 Hz": what kind of device, never its name (often the owner's).
+func deviceKind(_ device: AudioDeviceID) -> String {
+    let kinds: [UInt32: String] = [
+        kAudioDeviceTransportTypeBuiltIn: "Built-in", kAudioDeviceTransportTypeBluetooth: "Bluetooth",
+        kAudioDeviceTransportTypeBluetoothLE: "Bluetooth LE", kAudioDeviceTransportTypeUSB: "USB",
+        kAudioDeviceTransportTypeHDMI: "HDMI", kAudioDeviceTransportTypeDisplayPort: "DisplayPort",
+        kAudioDeviceTransportTypeAirPlay: "AirPlay", kAudioDeviceTransportTypeVirtual: "Virtual",
+        kAudioDeviceTransportTypeAggregate: "Aggregate",
+    ]
+    let transport = tryProperty(device, kAudioDevicePropertyTransportType, UInt32(0)) ?? 0
+    let rate = tryProperty(device, kAudioDevicePropertyNominalSampleRate, Float64(0)) ?? 0
+    return "\(kinds[transport] ?? "Other"), \(Int(rate)) Hz"
+}
+
+func listen(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
+            _ block: @escaping AudioObjectPropertyListenerBlock) -> () -> Void {
+    var address = AudioObjectPropertyAddress(
+        mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    AudioObjectAddPropertyListenerBlock(object, &address, .main, block)
+    return {
+        var address = address
+        AudioObjectRemovePropertyListenerBlock(object, &address, .main, block)
+    }
 }
 
 func deviceUID(_ device: AudioDeviceID) -> String {
@@ -94,7 +135,7 @@ func parseOptions() -> Options {
     return o
 }
 
-// MARK: - Writers
+// MARK: - Clock and events
 
 // Set on the main queue by the pause signals, read by the capture queues.
 let pauseLock = NSLock()
@@ -104,12 +145,45 @@ var isPaused: Bool {
     return pausedFlag
 }
 
+/// The recording's own time: wall time since the start, without the pauses (they are cut out of
+/// both files). A side that lost audio while its device changed is padded up to it.
+final class RecordingClock {
+    let start = Date()
+    private var pausedTotal: TimeInterval = 0
+    private var pausedAt: Date?
+    private let lock = NSLock()
+
+    func pause() { lock.lock(); if pausedAt == nil { pausedAt = Date() }; lock.unlock() }
+    func resume() {
+        lock.lock()
+        if let at = pausedAt { pausedTotal += Date().timeIntervalSince(at); pausedAt = nil }
+        lock.unlock()
+    }
+    var now: TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        let end = pausedAt ?? Date()
+        return end.timeIntervalSince(start) - pausedTotal
+    }
+}
+
+let clock = RecordingClock()
+var events: [[String: Any]] = []  // main queue only
+
+func event(_ side: String, _ what: String) {
+    let at = (clock.now * 10).rounded() / 10
+    events.append(["at": at, "side": side, "what": what])
+    log("parola-capture: warning: \(side) audio \(what) at \(at) s")
+}
+
+// MARK: - Writers
+
 final class Track {
     let file: AVAudioFile
-    let format: AVAudioFormat
+    let format: AVAudioFormat  // the file's, fixed when the recording starts
     var frames: Int64 = 0
     // Peak absolute sample since the last LEVELS line (read and reset on the main queue).
     var peak: Float = 0
+    private var converter: AVAudioConverter?
 
     init(url: URL, format: AVAudioFormat) throws {
         self.format = format
@@ -130,11 +204,57 @@ final class Track {
             }
             peak = p
         }
+        if buffer.format.isEqual(format) {
+            append(buffer)
+        } else if let converted = convert(buffer) {
+            append(converted)  // a device changed format mid-call: the file keeps its own
+        }
+    }
+
+    private func append(_ buffer: AVAudioPCMBuffer) {
         do {
             try file.write(from: buffer)
             frames += Int64(buffer.frameLength)
         } catch {
             log("parola-capture: write error: \(error)")
+        }
+    }
+
+    private func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        if converter == nil || !converter!.inputFormat.isEqual(buffer.format) {
+            converter = AVAudioConverter(from: buffer.format, to: format)
+        }
+        guard let converter else { return nil }
+        let ratio = format.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 64)
+        guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return nil }
+        var fed = false
+        var error: NSError?
+        converter.convert(to: out, error: &error) { _, status in
+            if fed { status.pointee = .noDataNow; return nil }
+            fed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        if let error {
+            log("parola-capture: conversion error: \(error)")
+            return nil
+        }
+        return out
+    }
+
+    /// Silence up to `seconds` of recording time: the moments a device change cost.
+    func pad(to seconds: Double) {
+        var missing = Int64(seconds * format.sampleRate) - frames
+        guard missing > Int64(format.sampleRate * 0.05) else { return }  // under 50 ms: nothing
+        while missing > 0 {
+            let n = AVAudioFrameCount(min(missing, Int64(format.sampleRate)))
+            guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: n) else { return }
+            silence.frameLength = n
+            let list = UnsafeMutableAudioBufferListPointer(silence.mutableAudioBufferList)
+            for b in list { memset(b.mData, 0, Int(b.mDataByteSize)) }
+            append(silence)
+            missing -= Int64(n)
         }
     }
 
@@ -147,15 +267,31 @@ final class SystemCapture {
     var tapID = AudioObjectID(kAudioObjectUnknown)
     var aggregateID = AudioObjectID(kAudioObjectUnknown)
     var procID: AudioDeviceIOProcID?
+    var outputID = AudioDeviceID(kAudioObjectUnknown)
     let queue = DispatchQueue(label: "parola.capture.system")
     var track: Track?
     var outputName = ""
+    private var stopListening: [() -> Void] = []  // on the current output device
+    private var restartPending = false
 
     func start(url: URL) throws {
-        let output: AudioDeviceID = property(
+        let format = try create()
+        track = try Track(url: url, format: format)
+        outputName = deviceName(outputID)
+        // A new default output (headphones in or out, AirPods connecting): follow it.
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        for selector in [kAudioHardwarePropertyDefaultSystemOutputDevice,
+                         kAudioHardwarePropertyDefaultOutputDevice] {
+            _ = listen(system, selector) { [weak self] _, _ in self?.restart("output device changed") }
+        }
+    }
+
+    /// Tap and aggregate on the current default output; returns the tap's format.
+    @discardableResult
+    private func create() throws -> AVAudioFormat {
+        outputID = property(
             AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultSystemOutputDevice,
             AudioDeviceID(kAudioObjectUnknown))
-        outputName = deviceName(output)
 
         // Stereo mixdown of every process; unmuted, so the call keeps playing.
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
@@ -168,11 +304,11 @@ final class SystemCapture {
         let aggregate: [String: Any] = [
             kAudioAggregateDeviceNameKey: "parola-capture",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceMainSubDeviceKey: deviceUID(output),
+            kAudioAggregateDeviceMainSubDeviceKey: deviceUID(outputID),
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: deviceUID(output)]],
+            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: deviceUID(outputID)]],
             kAudioAggregateDeviceTapListKey: [
                 [kAudioSubTapDriftCompensationKey: true, kAudioSubTapUIDKey: description.uuid.uuidString]
             ],
@@ -185,33 +321,76 @@ final class SystemCapture {
         guard let format = AVAudioFormat(streamDescription: &asbd) else {
             fail("unsupported tap format")
         }
-        let track = try Track(url: url, format: format)
-        self.track = track
-        check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) { _, input, _, _, _ in
-            guard let buffer = AVAudioPCMBuffer(
+        check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) { [weak self] _, input, _, _, _ in
+            guard let track = self?.track, let buffer = AVAudioPCMBuffer(
                 pcmFormat: format, bufferListNoCopy: input, deallocator: nil) else { return }
             track.write(buffer)
         }, "creating the IO proc")
         check(AudioDeviceStart(aggregateID, procID), "starting the system capture")
+        // The same device changing rate (AirPods: 48 to 24 kHz when their microphone starts) or
+        // going away: start again on what is there now.
+        stopListening = [
+            listen(outputID, kAudioDevicePropertyNominalSampleRate) { [weak self] _, _ in
+                self?.restart("sample rate changed")
+            },
+            listen(outputID, kAudioDevicePropertyDeviceIsAlive) { [weak self] _, _ in
+                self?.restart("device went away")
+            },
+        ]
+        return format
     }
 
-    func stop() {
+    private func destroy() {
+        stopListening.forEach { $0() }
+        stopListening = []
         if aggregateID != kAudioObjectUnknown {
             AudioDeviceStop(aggregateID, procID)
             if let procID { AudioDeviceDestroyIOProcID(aggregateID, procID) }
             queue.sync {}  // let pending buffers be written
             AudioHardwareDestroyAggregateDevice(aggregateID)
+            aggregateID = AudioObjectID(kAudioObjectUnknown)
+            procID = nil
         }
-        if tapID != kAudioObjectUnknown { AudioHardwareDestroyProcessTap(tapID) }
+        if tapID != kAudioObjectUnknown {
+            AudioHardwareDestroyProcessTap(tapID)
+            tapID = AudioObjectID(kAudioObjectUnknown)
+        }
+    }
+
+    /// On the main queue; several notifications for one change make a single restart.
+    func restart(_ reason: String) {
+        guard !restartPending, track != nil else { return }
+        restartPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+            restartPending = false
+            destroy()
+            queue.sync { track?.pad(to: clock.now) }
+            for attempt in 1...5 {
+                do {
+                    try create()
+                    event("system", "\(reason): now \(deviceKind(outputID))")
+                    return
+                } catch {
+                    if attempt == 5 { event("system", "\(reason): could not restart (\(error))") }
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+            }
+        }
+    }
+
+    func stop() {
+        destroy()
     }
 }
 
 // MARK: - Microphone
 
 final class MicCapture {
-    let engine = AVAudioEngine()
+    var engine = AVAudioEngine()
     let queue = DispatchQueue(label: "parola.capture.mic")
     var track: Track?
+    private var observer: NSObjectProtocol?
+    private var restartPending = false
 
     func start(url: URL) throws {
         let semaphore = DispatchSemaphore(value: 0)
@@ -226,22 +405,70 @@ final class MicCapture {
         if !granted {
             fail("microphone access denied: allow it in System Settings > Privacy & Security > Microphone")
         }
+        track = try Track(url: url, format: engine.inputNode.outputFormat(forBus: 0))
+        try attach()
+        // A new default microphone (AirPods connecting, a USB headset): follow it.
+        _ = listen(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) {
+            [weak self] _, _ in self?.restart("input device changed")
+        }
+    }
+
+    private func attach() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        let track = try Track(url: url, format: format)
-        self.track = track
+        guard format.sampleRate > 0, format.channelCount > 0, let track else {
+            throw NSError(domain: "parola-capture", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "no microphone format yet"])
+        }
         let queue = self.queue
         // installTap is deprecated in macOS 27 but still works; to revisit with its replacement.
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
             queue.async { track.write(buffer) }
         }
         try engine.start()
+        // AVAudioEngine stops by itself when its device changes format: then start again.
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in self?.restart("configuration changed") }
     }
 
-    func stop() {
+    private func detach() {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         queue.sync {}
+    }
+
+    /// On the main queue; several notifications for one change make a single restart.
+    func restart(_ reason: String) {
+        guard !restartPending, track != nil else { return }
+        restartPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [self] in
+            restartPending = false
+            detach()
+            engine = AVAudioEngine()  // a new engine takes the default input as it is now
+            queue.sync { track?.pad(to: clock.now) }
+            for attempt in 1...5 {
+                do {
+                    try attach()
+                    let device = tryProperty(AudioObjectID(kAudioObjectSystemObject),
+                                             kAudioHardwarePropertyDefaultInputDevice,
+                                             AudioDeviceID(kAudioObjectUnknown))
+                    event("mic", "\(reason): now \(device.map(deviceKind) ?? "unknown")")
+                    return
+                } catch {
+                    engine.inputNode.removeTap(onBus: 0)
+                    if attempt == 5 { event("mic", "\(reason): could not restart (\(error))") }
+                    Thread.sleep(forTimeInterval: 0.5)
+                    engine = AVAudioEngine()
+                }
+            }
+        }
+    }
+
+    func stop() {
+        detach()
     }
 }
 
@@ -251,7 +478,7 @@ let options = parseOptions()
 try? FileManager.default.createDirectory(at: options.outDir, withIntermediateDirectories: true)
 let micURL = options.outDir.appendingPathComponent("\(options.name).mic.wav")
 let systemURL = options.outDir.appendingPathComponent("\(options.name).system.wav")
-let started = Date()
+let started = clock.start
 
 let mic = MicCapture()
 let system = SystemCapture()
@@ -283,6 +510,13 @@ if options.levels {
 func finish() -> Never {
     if options.mic { mic.stop() }
     if options.system { system.stop() }
+    // A side whose device was changing when the call ended: silence up to the end, so both
+    // files have the same length.
+    let end = clock.now
+    if !events.isEmpty {
+        if options.mic { mic.queue.sync { mic.track?.pad(to: end) } }
+        if options.system { system.queue.sync { system.track?.pad(to: end) } }
+    }
     var meta: [String: Any] = [
         "started_at": ISO8601DateFormatter().string(from: started),
         "elapsed_seconds": Date().timeIntervalSince(started),
@@ -296,6 +530,7 @@ func finish() -> Never {
                           "channels": t.format.channelCount, "seconds": t.seconds,
                           "output_device": system.outputName]
     }
+    if !events.isEmpty { meta["events"] = events }
     let data = try! JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
     try! data.write(to: options.outDir.appendingPathComponent("\(options.name).capture.json"))
     print(String(data: data, encoding: .utf8)!)
@@ -314,6 +549,7 @@ let pauseSources = [(SIGUSR1, true), (SIGUSR2, false)].map { (sig, value) -> Dis
     let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)
     s.setEventHandler {
         pauseLock.lock(); pausedFlag = value; pauseLock.unlock()
+        if value { clock.pause() } else { clock.resume() }
         log("parola-capture: " + (value ? "paused" : "resumed"))
     }
     s.resume()
