@@ -197,6 +197,11 @@ the participants' consent, the pairs are training data for the fine-tuning that 
   their microphone starts, restart that side on the device in use. The files keep the format
   they started with (the new audio is converted) and the restart's moments are filled with
   silence, so the two files stay aligned with each other and with the clock.
+- **Long digital silence:** the system side is exact zeros whenever no app plays anything,
+  and Whisper skipped the speech that came after 23 s of it. Runs of exact zeros over 3 s are
+  shortened to 1 s before decoding and the times mapped back. Microphone audio never holds
+  them (the test set's longest run is 0.04 s), so the measured error rates do not change
+  ([report](results/2026-10-18-digital-silence.md)).
 - **Voice activity detection:** only stretches with sound are transcribed, to keep Whisper from
   inventing text over silence. Fidelity is unchanged: 5.1 with and without VAD
   ([report](results/2026-10-15-vad.md)). Earlier versions that shifted decoding windows lost

@@ -70,6 +70,25 @@ def _merge_words(raw_words: list[dict[str, Any]]) -> list[Word]:
     return words
 
 
+def restore_times(segments: list[Segment], cuts) -> list[Segment]:
+    """Segments decoded on audio with shortened silences, on the original timeline."""
+
+    def back(t: float | None) -> float | None:
+        return None if t is None else cuts.original(t)
+
+    out = []
+    for seg in segments:
+        words = [w.model_copy(update={"start": back(w.start), "end": back(w.end)})
+                 for w in seg.words]  # fmt: skip
+        timed = [w for w in words if w.start is not None and w.end is not None]
+        # A segment can begin at the edge of a cut: its words carry the real times.
+        start = timed[0].start if timed else back(seg.start)
+        end = timed[-1].end if timed else back(seg.end)
+        update = {"start": start, "end": max(end, start), "words": words}
+        out.append(seg.model_copy(update=update))
+    return out
+
+
 def has_sound(segment: Segment, regions: list[tuple[float, float]]) -> bool:
     """True if any word midpoint (or, without word times, the segment) falls on sound."""
     t = WORD_TOLERANCE_SECONDS
@@ -196,13 +215,15 @@ class MLXWhisperBackend:
         # Called with the segments decoded so far, as Segment objects, after every window.
         self.on_segments = None
 
-    def _partial(self, language: str | None, regions=None):
+    def _partial(self, language: str | None, regions=None, cuts=None):
         """What whisper_progress hands over, made into the segments the transcript will have."""
         if self.on_segments is None:
             return None
 
         def hand_over(raw: list[dict]) -> None:
             segments = convert_result({"segments": raw, "language": language}).segments
+            if cuts is not None:
+                segments = restore_times(segments, cuts)
             if regions is not None:
                 segments = [s for s in segments if has_sound(s, regions)]
             self.on_segments(segments)
@@ -247,14 +268,27 @@ class MLXWhisperBackend:
         # Decoding is the same as without VAD: shifting where it starts (or decoding each sound
         # stretch on its own, or Whisper's hallucination_silence_threshold) moved Whisper's
         # windows and made it skip real speech on the test set (results/2026-10-15-vad.md).
-        with whisper_progress(self.on_progress, self._partial(language, regions)):
-            merged = mlx_whisper.transcribe(
-                str(wav_path),
-                path_or_hf_repo=self.model,
-                language=language,
-                word_timestamps=True,
-                initial_prompt=self.initial_prompt,
-            )
+        # Only long runs of exact zeros, which a microphone never gives but a call's system
+        # side gives whenever nobody plays anything, are shortened: Whisper skipped the speech
+        # after them (parola.audio.silence).
+        import tempfile
+
+        from parola.audio.silence import condensed_wav
+
+        with tempfile.TemporaryDirectory(prefix="parola-silence-") as tmp:
+            short = Path(tmp) / "short.wav"
+            cuts = condensed_wav(wav_path, short)
+            source = short if cuts is not None else wav_path
+            with whisper_progress(self.on_progress, self._partial(language, regions, cuts)):
+                merged = mlx_whisper.transcribe(
+                    str(source),
+                    path_or_hf_repo=self.model,
+                    language=language,
+                    word_timestamps=True,
+                    initial_prompt=self.initial_prompt,
+                )
         converted = convert_result(merged)
+        if cuts is not None:
+            converted.segments = restore_times(converted.segments, cuts)
         converted.segments = [s for s in converted.segments if has_sound(s, regions)]
         return converted
