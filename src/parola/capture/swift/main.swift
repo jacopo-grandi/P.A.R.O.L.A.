@@ -178,12 +178,13 @@ func event(_ side: String, _ what: String) {
 // MARK: - Writers
 
 final class Track {
-    let file: AVAudioFile
+    private var file: AVAudioFile?  // nil once closed
     let format: AVAudioFormat  // the file's, fixed when the recording starts
     var frames: Int64 = 0
     // Peak absolute sample since the last LEVELS line (read and reset on the main queue).
     var peak: Float = 0
     private var converter: AVAudioConverter?
+    private var started = false
 
     init(url: URL, format: AVAudioFormat) throws {
         self.format = format
@@ -194,6 +195,13 @@ final class Track {
 
     func write(_ buffer: AVAudioPCMBuffer) {
         if isPaused { return }
+        if !started {
+            // Both files start at the recording's start: the microphone engine can take a second
+            // or more to deliver its first buffer after the system tap, and the transcripts of the
+            // two sides are merged by time.
+            started = true
+            pad(to: clock.now - Double(buffer.frameLength) / buffer.format.sampleRate)
+        }
         if let data = buffer.floatChannelData {
             let interleaved = buffer.format.isInterleaved
             let channels = Int(buffer.format.channelCount)
@@ -212,6 +220,7 @@ final class Track {
     }
 
     private func append(_ buffer: AVAudioPCMBuffer) {
+        guard let file else { return }
         do {
             try file.write(from: buffer)
             frames += Int64(buffer.frameLength)
@@ -257,6 +266,9 @@ final class Track {
             missing -= Int64(n)
         }
     }
+
+    /// Writes what AVAudioFile still holds: exit() would drop it (the last ~40 ms).
+    func close() { file = nil }
 
     var seconds: Double { Double(frames) / format.sampleRate }
 }
@@ -530,6 +542,8 @@ func finish() -> Never {
                           "channels": t.format.channelCount, "seconds": t.seconds,
                           "output_device": system.outputName]
     }
+    if options.mic { mic.queue.sync { mic.track?.close() } }
+    if options.system { system.queue.sync { system.track?.close() } }
     if !events.isEmpty { meta["events"] = events }
     let data = try! JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
     try! data.write(to: options.outDir.appendingPathComponent("\(options.name).capture.json"))
