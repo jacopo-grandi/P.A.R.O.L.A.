@@ -10,7 +10,9 @@ the tools, the Python packages and, once, the speech models.
 - About 6 GB of free space: 4.2 GB of speech models, the rest for the app and its packages.
 - 16 GB of memory is comfortable; a transcription uses about 6 GB at its peak, so on 8 GB
   close other apps while it runs (`install.sh` says so).
-- [Homebrew](https://brew.sh), if `uv` or `ffmpeg` are not installed yet.
+
+Nothing else needs to be there already: `install.sh` checks the tools (the Xcode Command Line
+Tools, [Homebrew](https://brew.sh), `uv`, `ffmpeg`) and offers to install any that are missing.
 
 ## Install it yourself
 
@@ -23,7 +25,8 @@ cd parola
 The script asks before installing anything. It:
 
 1. checks the Mac and the tools: the Xcode Command Line Tools (Swift), `uv` and `ffmpeg`. If
-   one is missing, it offers to install it (Homebrew, or Apple's installer for Swift);
+   one is missing, it offers to install it — Homebrew itself included, with its official
+   installer (which asks for your macOS password), or Apple's installer for Swift;
 2. installs the Python packages into `.venv` with `uv sync`;
 3. builds the capture helper and the app, `dist/PAROLA.app`;
 4. offers to copy the app to /Applications, then to open it.

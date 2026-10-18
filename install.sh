@@ -75,8 +75,25 @@ command -v uv >/dev/null 2>&1 || missing="$missing uv"
 command -v ffmpeg >/dev/null 2>&1 || missing="$missing ffmpeg"
 if [ -n "$missing" ]; then
     echo "    missing:$missing"
-    command -v brew >/dev/null 2>&1 \
-        || fail "Install Homebrew (https://brew.sh), then run ./install.sh again."
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "    missing: Homebrew (https://brew.sh), the package manager that installs$missing"
+        if ask "    Install Homebrew now? (its installer asks for your macOS password)"; then
+            # Homebrew's own installer, from its official repository. NONINTERACTIVE skips
+            # its "press RETURN" prompt under --yes; the password question remains the person's.
+            if [ "$yes" = 1 ]; then
+                NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            else
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            fi
+            for dir in /opt/homebrew/bin /usr/local/bin; do
+                case ":$PATH:" in *":$dir:"*) ;; *) [ -d "$dir" ] && PATH="$dir:$PATH" ;; esac
+            done
+            command -v brew >/dev/null 2>&1 \
+                || fail "Homebrew did not install; see the messages above, then run ./install.sh again."
+        else
+            fail "Install Homebrew (https://brew.sh), then run ./install.sh again."
+        fi
+    fi
     if ask "    Install them with Homebrew (brew install$missing)?"; then
         # shellcheck disable=SC2086
         brew install $missing

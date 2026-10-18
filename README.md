@@ -59,7 +59,7 @@ On an Apple Silicon Mac with macOS 14.2 or later:
    ./install.sh
    ```
 
-   The script checks the tools (Swift, `uv`, `ffmpeg`) and asks before installing any, builds
+   The script checks the tools (Swift, Homebrew, `uv`, `ffmpeg`) and asks before installing any, builds
    `PAROLA.app`, and offers to copy it to /Applications and to open it.
 2. **Open P.A.R.O.L.A.** from /Applications (or Launchpad, Spotlight). It lives in the menu bar
    too: closing the window keeps it ready to record.
