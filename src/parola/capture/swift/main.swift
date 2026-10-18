@@ -75,6 +75,54 @@ func deviceKind(_ device: AudioDeviceID) -> String {
     return "\(kinds[transport] ?? "Other"), \(Int(rate)) Hz"
 }
 
+func transport(_ device: AudioDeviceID) -> UInt32 {
+    tryProperty(device, kAudioDevicePropertyTransportType, UInt32(0)) ?? 0
+}
+
+func isBluetooth(_ device: AudioDeviceID) -> Bool {
+    [kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE].contains(transport(device))
+}
+
+func nominalRate(_ device: AudioDeviceID) -> Float64 {
+    tryProperty(device, kAudioDevicePropertyNominalSampleRate, Float64(0)) ?? 0
+}
+
+func allDevices() -> [AudioDeviceID] {
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    let system = AudioObjectID(kAudioObjectSystemObject)
+    guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return [] }
+    var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+    guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return [] }
+    return ids
+}
+
+func hasOutput(_ device: AudioDeviceID) -> Bool {
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeOutput,
+        mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    return AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr && size > 0
+}
+
+func defaultOutput() -> AudioDeviceID {
+    tryProperty(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultSystemOutputDevice,
+                AudioDeviceID(kAudioObjectUnknown)) ?? AudioDeviceID(kAudioObjectUnknown)
+}
+
+/// The device that clocks the system tap. The tap mixes the audio of every process whatever
+/// device plays it; the device only keeps time. Bluetooth headphones are a bad clock: they switch
+/// profile and rate when their microphone starts, and building an aggregate on them can switch
+/// them again, which restarts the microphone, and so on (a loop measured with Beats Studio Buds:
+/// 17 restarts in 13 s, both files silent). So a built-in output is used when there is one.
+func tapClock() -> AudioDeviceID {
+    let output = defaultOutput()
+    guard isBluetooth(output) else { return output }
+    return allDevices().first { transport($0) == kAudioDeviceTransportTypeBuiltIn && hasOutput($0) } ?? output
+}
+
 func listen(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
             _ block: @escaping AudioObjectPropertyListenerBlock) -> () -> Void {
     var address = AudioObjectPropertyAddress(
@@ -283,27 +331,31 @@ final class SystemCapture {
     let queue = DispatchQueue(label: "parola.capture.system")
     var track: Track?
     var outputName = ""
-    private var stopListening: [() -> Void] = []  // on the current output device
+    private var stopListening: [() -> Void] = []  // on the clock device
     private var restartPending = false
+    private var lastRestart = Date.distantPast
+    private var clockRate: Float64 = 0
 
     func start(url: URL) throws {
         let format = try create()
         track = try Track(url: url, format: format)
-        outputName = deviceName(outputID)
-        // A new default output (headphones in or out, AirPods connecting): follow it.
+        outputName = deviceName(defaultOutput())
+        // A new default output (headphones in or out): restart only if the clock has to change.
         let system = AudioObjectID(kAudioObjectSystemObject)
         for selector in [kAudioHardwarePropertyDefaultSystemOutputDevice,
                          kAudioHardwarePropertyDefaultOutputDevice] {
-            _ = listen(system, selector) { [weak self] _, _ in self?.restart("output device changed") }
+            _ = listen(system, selector) { [weak self] _, _ in
+                guard let self, tapClock() != self.outputID else { return }
+                self.restart("output device changed")
+            }
         }
     }
 
-    /// Tap and aggregate on the current default output; returns the tap's format.
+    /// Tap and aggregate clocked by ``tapClock()``; returns the tap's format.
     @discardableResult
     private func create() throws -> AVAudioFormat {
-        outputID = property(
-            AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultSystemOutputDevice,
-            AudioDeviceID(kAudioObjectUnknown))
+        outputID = tapClock()
+        clockRate = nominalRate(outputID)
 
         // Stereo mixdown of every process; unmuted, so the call keeps playing.
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
@@ -343,7 +395,8 @@ final class SystemCapture {
         // going away: start again on what is there now.
         stopListening = [
             listen(outputID, kAudioDevicePropertyNominalSampleRate) { [weak self] _, _ in
-                self?.restart("sample rate changed")
+                guard let self, nominalRate(self.outputID) != self.clockRate else { return }
+                self.restart("sample rate changed")
             },
             listen(outputID, kAudioDevicePropertyDeviceIsAlive) { [weak self] _, _ in
                 self?.restart("device went away")
@@ -373,8 +426,11 @@ final class SystemCapture {
     func restart(_ reason: String) {
         guard !restartPending, track != nil else { return }
         restartPending = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+        // Never more than one restart every 2 s: a device settling sends several notifications.
+        let wait = max(0.5, 2.0 - Date().timeIntervalSince(lastRestart))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [self] in
             restartPending = false
+            lastRestart = Date()
             destroy()
             queue.sync { track?.pad(to: clock.now) }
             for attempt in 1...5 {
@@ -403,6 +459,9 @@ final class MicCapture {
     var track: Track?
     private var observer: NSObjectProtocol?
     private var restartPending = false
+    private var lastRestart = Date.distantPast
+    private var inputID = AudioDeviceID(kAudioObjectUnknown)
+    private var inputFormat: AVAudioFormat?
 
     func start(url: URL) throws {
         let semaphore = DispatchSemaphore(value: 0)
@@ -433,6 +492,8 @@ final class MicCapture {
                           userInfo: [NSLocalizedDescriptionKey: "no microphone format yet"])
         }
         let queue = self.queue
+        inputID = currentInput()
+        inputFormat = format
         // installTap is deprecated in macOS 27 but still works; to revisit with its replacement.
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
             queue.async { track.write(buffer) }
@@ -452,22 +513,36 @@ final class MicCapture {
         queue.sync {}
     }
 
-    /// On the main queue; several notifications for one change make a single restart.
+    private func currentInput() -> AudioDeviceID {
+        tryProperty(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice,
+                    AudioDeviceID(kAudioObjectUnknown)) ?? AudioDeviceID(kAudioObjectUnknown)
+    }
+
+    /// On the main queue; several notifications for one change make a single restart, and never
+    /// more than one every 2 s. The engine is rebuilt only when the default microphone changed:
+    /// reopening the same Bluetooth microphone makes it renegotiate, and the format change that
+    /// follows would restart it again.
     func restart(_ reason: String) {
         guard !restartPending, track != nil else { return }
         restartPending = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [self] in
+        let wait = max(0.3, 2.0 - Date().timeIntervalSince(lastRestart))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [self] in
             restartPending = false
+            lastRestart = Date()
+            let before = (inputID, inputFormat)
             detach()
-            engine = AVAudioEngine()  // a new engine takes the default input as it is now
+            let newDevice = currentInput() != before.0
+            if newDevice { engine = AVAudioEngine() }  // a new engine takes the new default input
             queue.sync { track?.pad(to: clock.now) }
             for attempt in 1...5 {
                 do {
                     try attach()
-                    let device = tryProperty(AudioObjectID(kAudioObjectSystemObject),
-                                             kAudioHardwarePropertyDefaultInputDevice,
-                                             AudioDeviceID(kAudioObjectUnknown))
-                    event("mic", "\(reason): now \(device.map(deviceKind) ?? "unknown")")
+                    let changed = newDevice || !(inputFormat?.isEqual(before.1) ?? false)
+                    if changed {
+                        event("mic", "\(reason): now \(deviceKind(inputID))")
+                    } else {
+                        log("parola-capture: mic \(reason), same device and format: reattached")
+                    }
                     return
                 } catch {
                     engine.inputNode.removeTap(onBus: 0)
