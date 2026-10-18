@@ -102,8 +102,11 @@ steps in order and report back in their language.
    `ffmpeg -version`. If any is missing, tell them what is missing and its size, and ask:
    - Command Line Tools: `xcode-select --install` opens Apple's installer, which the person has
      to confirm on screen; wait until it is done.
-   - `uv` / `ffmpeg`: `brew install uv ffmpeg` (if Homebrew itself is missing, point them to
-     https://brew.sh; do not install it for them without asking).
+   - `uv` / `ffmpeg`: `brew install uv ffmpeg`. If Homebrew itself is missing, ask first and,
+     with their yes, run its official installer (the command on https://brew.sh) in a terminal
+     the person can see and type in: the installer asks for their macOS password, and they
+     enter it themselves. If you have no such terminal, tell them to run that command in
+     Terminal and wait.
 4. **Run the installer** from the repository folder: `./install.sh --yes`. With `--yes` it also
    copies the app to /Applications and opens it: if the person does not want that, run it
    without `--yes` in a terminal they can answer, or skip those steps.
@@ -115,7 +118,8 @@ steps in order and report back in their language.
 Rules:
 
 - Do not download the speech models yourself: the app asks the person first.
-- Do not use `sudo`, and do not change system or privacy settings: the person grants the
-  permissions when macOS asks.
+- Do not run `sudo` yourself, and never ask for, read or type the person's password: the
+  installers that need it (Homebrew's, Apple's) ask the person directly. Do not change system
+  or privacy settings: the person grants the permissions when macOS asks.
 - Never read, move or upload anything under `data/private/`: it holds their recordings.
 - If a step fails, show the error and stop; do not work around it by editing the code.
