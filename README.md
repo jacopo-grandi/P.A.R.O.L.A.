@@ -54,8 +54,8 @@ On an Apple Silicon Mac with macOS 14.2 or later:
 1. **Install.** In Terminal:
 
    ```bash
-   git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git
-   cd P.A.R.O.L.A.
+   git clone https://github.com/jacopo-grandi/parola.git
+   cd parola
    ./install.sh
    ```
 
@@ -74,12 +74,12 @@ On an Apple Silicon Mac with macOS 14.2 or later:
 Or let a coding agent do step 1: paste this into Claude Code, Codex or a similar agent on your
 Mac:
 
-> Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/P.A.R.O.L.A. into my
+> Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/parola into my
 > home folder and follow the "Instructions for coding agents" in its INSTALL.md.
 
 Details, updating, removing and troubleshooting: [`INSTALL.md`](INSTALL.md).
 
-Something not working? [Open an issue](https://github.com/jacopo-grandi/P.A.R.O.L.A./issues/new/choose)
+Something not working? [Open an issue](https://github.com/jacopo-grandi/parola/issues/new/choose)
 with the output of `uv run parola doctor`.
 
 ## From the terminal

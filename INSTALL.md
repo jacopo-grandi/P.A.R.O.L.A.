@@ -15,8 +15,8 @@ the tools, the Python packages and, once, the speech models.
 ## Install it yourself
 
 ```bash
-git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git
-cd P.A.R.O.L.A.
+git clone https://github.com/jacopo-grandi/parola.git
+cd parola
 ./install.sh
 ```
 
@@ -39,13 +39,13 @@ Keep the folder where it is: the app runs the engine from there, and your calls 
 
 Paste this into Claude Code, Codex or a similar agent running on your Mac:
 
-> Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/P.A.R.O.L.A. into my
+> Install P.A.R.O.L.A. on this Mac: clone https://github.com/jacopo-grandi/parola into my
 > home folder and follow the "Instructions for coding agents" in its INSTALL.md.
 
 ## Updating
 
 ```bash
-cd P.A.R.O.L.A.
+cd parola
 git pull
 ./install.sh
 ```
@@ -73,7 +73,7 @@ Quit the app (menu bar icon → Esci), then delete:
   downloaded is kept.
 - **The app does not start** ("Motore non trovato"): run `./install.sh` again from the folder.
 
-Still stuck? [Open an issue](https://github.com/jacopo-grandi/P.A.R.O.L.A./issues/new/choose) and
+Still stuck? [Open an issue](https://github.com/jacopo-grandi/parola/issues/new/choose) and
 paste what this prints (it holds nothing personal; read it before pasting):
 
 ```bash
@@ -93,7 +93,7 @@ steps in order and report back in their language.
 1. **Check** that this is macOS 14.2 or later on Apple Silicon (`sw_vers`, `uname -m` = `arm64`).
    If not, stop and say why it cannot be installed.
 2. **Clone** the repository, unless it is already there (then `git pull` in it):
-   `git clone https://github.com/jacopo-grandi/P.A.R.O.L.A..git ~/P.A.R.O.L.A.`
+   `git clone https://github.com/jacopo-grandi/parola.git ~/parola`
    Use another folder only if the person asks.
 3. **Ask the person before installing tools.** Check `xcode-select -p`, `uv --version` and
    `ffmpeg -version`. If any is missing, tell them what is missing and its size, and ask:
