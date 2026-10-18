@@ -17,6 +17,7 @@ import threading
 from pathlib import Path
 
 from parola.audio.extract import FFmpegError
+from parola.audio.wavfix import repair
 
 CACHE = ".playback"
 KEEP = 3
@@ -25,6 +26,10 @@ _lock = threading.Lock()
 
 def playable(folder: Path, source: Path) -> Path:
     """A file the player can seek in: ``source`` itself unless it is FLAC."""
+    if source.suffix == ".wav":
+        with _lock:
+            repair(source)  # a header left at 0 bytes plays nothing in WebKit (parola.audio.wavfix)
+        return source
     if source.suffix != ".flac":
         return source
     cache = folder / CACHE
