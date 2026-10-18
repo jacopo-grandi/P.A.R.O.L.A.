@@ -5,7 +5,9 @@ Verbatim transcription of audio and calls, **100% local** on Apple Silicon Macs,
 English (including both mixed in the same sentence).
 
 "Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
-layer will be derived from the verbatim one, never the other way around.
+layer will be derived from the verbatim one, never the other way around. Measured honestly:
+the default engine favours fidelity and still drops most fillers on its own; the doubtful-word
+review is how the missing speech comes back ([the numbers](#for-engineers)).
 
 How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
 
@@ -183,6 +185,30 @@ uv run parola audit summary audit-answers.json          # after exporting the an
 
 Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:
 [`docs/annotation.md`](docs/annotation.md).
+
+## For engineers
+
+Transcribers usually clean speech up. This project keeps it — Italian, English, and both mixed
+in the same sentence — and tells you where it is not sure. The interesting part is not the app
+but the measurement around it: a fidelity-first metric suite with hand-built unit tests,
+adjudicated references (every model disagreement decided by ear), bootstrap confidence
+intervals, and a dated report in [`results/`](results/) behind every number. The method, the
+models and why they were chosen: [`METHODOLOGY.md`](METHODOLOGY.md).
+
+On the two adjudicated reference calls (fidelity WER, lower is better; details and confidence
+intervals in [`METHODOLOGY.md`](METHODOLOGY.md)):
+
+| System | Italian | English | Fillers kept (of 466) |
+|---|---|---|---|
+| **Whisper large-v3-turbo** (default) | **4.8** | 5.3 | 2 |
+| CrisperWhisper 2.0 turbo | 8.5 | **2.7** | 448 |
+| Parakeet TDT 0.6B v3 | 16.7 | 10.1 | 315 |
+
+The honest gap is in that last column: the engine that is most faithful in Italian also drops
+nearly every filler, so today the full verbatim comes from the doubtful-word review, not from
+the raw model. The open next step is a LoRA for Italian verbatim — and the training data is
+the one corpus that does not exist publicly: the app's own corrected calls, collected through
+normal use.
 
 ## Development
 
