@@ -600,7 +600,9 @@ async function render(data, after) {
           rec.voices[seg.speaker] || seg.speaker)
       : el("div", { class: `who ${channel}` }, LABELS[channel] ?? channel);
     body.append(el("div", { class: "turn", lang: seg.lang || null, "data-channel": channel,
-                            "data-key": key, "data-doubt": seg.words.some(w => w.doubtful) },
+                            // String(), not the boolean: el() writes `true` as an empty
+                            // attribute, and the doubts filter compares against "true".
+                            "data-key": key, "data-doubt": String(seg.words.some(w => w.doubtful)) },
       who,
       // The voice menu lives in the time column: its clicks must not start the audio.
       el("span", { class: "t", onclick: e => { if (!e.target.closest(".menu, .turn-voice")) play(first); } },
