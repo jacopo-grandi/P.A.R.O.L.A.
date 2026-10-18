@@ -71,13 +71,6 @@ function iconButton(name, label, onclick, cls = "") {
     icon(name));
 }
 
-function clock(seconds) {
-  const s = Math.max(0, Math.floor(seconds || 0));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
-  const mm = String(m).padStart(2, "0"), ss = String(r).padStart(2, "0");
-  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
 const enc = encodeURIComponent;
 
 async function getJSON(url) {
@@ -142,28 +135,6 @@ function popMenu(anchor, ...items) {
 // ---------------------------------------------------------------- sidebar
 
 let calls = [];   // summaries from /api/recordings, newest first
-
-function dayOf(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-
-function groupOf(date) {
-  const days = Math.round((dayOf(new Date()) - dayOf(date)) / 86400000);
-  if (days <= 0) return "Oggi";
-  if (days === 1) return "Ieri";
-  if (days < 7) return "Ultimi 7 giorni";
-  if (days < 30) return "Ultimi 30 giorni";
-  return date.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
-}
-
-function shortWhen(date) {
-  const days = Math.round((dayOf(new Date()) - dayOf(date)) / 86400000);
-  return days < 2 ? date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
-                  : date.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
-}
-
-function minutes(seconds) {
-  const m = Math.round((seconds || 0) / 60);
-  return m < 1 ? "< 1 min" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
-}
 
 async function refreshCalls() {
   calls = await getJSON("/api/recordings");
@@ -349,10 +320,6 @@ try {
   if (SPEEDS.includes(saved)) speed = saved;
 } catch (e) { /* storage blocked: start at 1x */ }
 
-function speedLabel(v) {
-  return `${String(v).replace(".", ",")}×`;
-}
-
 function setSpeed(v) {
   speed = v;
   for (const p of Object.values(players)) p.playbackRate = v;
@@ -536,12 +503,8 @@ function closeEditor() {
 }
 
 function nextRun(direction, from) {
-  if (!runs.length) return null;
   const pos = from ?? (current ? (words.find(w => w.el === current) || {}).start ?? -1 : -1);
-  const ordered = [...runs].sort((a, b) => a.t - b.t);
-  const found = direction > 0 ? ordered.find(r => r.t > pos + 0.01)
-                              : [...ordered].reverse().find(r => r.t < pos - 0.01);
-  return found || (direction > 0 ? ordered[0] : ordered[ordered.length - 1]);
+  return pickRun(runs, direction, pos);
 }
 
 function jump(direction) {
@@ -611,6 +574,7 @@ async function render(data, after) {
     const channel = seg.channel || "mic";
     const text = el("div", { class: "text" });
     const list = seg.words.length ? seg.words : [{ text: seg.text, start: seg.start, end: seg.end }];
+    runs.push(...doubtfulRuns(list, si, channel, seg.start));
     list.forEach((w, k) => {
       const start = w.start ?? seg.start, end = w.end ?? seg.end;
       const span = el("span", { class: "w" + (w.doubtful ? " doubt" : "") }, w.text);
@@ -625,11 +589,6 @@ async function render(data, after) {
       });
       words.push(word);
       text.append(span, k < list.length - 1 ? " " : "");
-      if (w.doubtful && !(k > 0 && list[k - 1].doubtful)) {
-        let e = k;
-        while (e < list.length && list[e].doubtful) e++;
-        runs.push({ seg: si, start: k, end: e, t: start, channel });
-      }
     });
     const first = words[words.length - list.length];
     // lang per line: an English line is hyphenated and read aloud as English.
@@ -833,35 +792,15 @@ function voiceMenu(anchor, segment) {
 
 let find = null;  // {q, index, hits: [[word, ...], ...]} while the find bar is open
 
-function fold(text) {
-  // Same as parola.search.fold: lowercase, no accents, no punctuation at the edges.
-  return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    .replace(/^[^\p{L}\p{N}_]+|[^\p{L}\p{N}_]+$/gu, "");
-}
-
-function forms(text) {
-  // "dell'impatto" is found by itself and by "impatto".
-  const f = fold(text);
-  const m = f.match(/^[\p{L}\p{N}_]+['\u2019]([\p{L}\p{N}_].*)$/u);
-  return m ? [f, m[1]] : [f];
-}
-
 function findHits(q) {
-  const tokens = q.split(/\s+/).map(fold).filter(Boolean);
-  if (!tokens.length) return [];
-  const hits = [];
   const bySeg = new Map();
   for (const w of words) {
     if (!bySeg.has(w.seg)) bySeg.set(w.seg, []);
     bySeg.get(w.seg).push(w);
   }
-  for (const list of bySeg.values()) {
-    const alts = list.map(w => forms(w.el.textContent));
-    for (let k = 0; k + tokens.length <= list.length; k++) {
-      if (tokens.every((t, i) => alts[k + i].includes(t))) hits.push(list.slice(k, k + tokens.length));
-    }
-  }
-  return hits;
+  const lists = [...bySeg.values()];
+  return findMatches(q, lists.map(list => list.map(w => w.el.textContent)))
+    .map(m => lists[m.seg].slice(m.start, m.end));
 }
 
 function openFind(q, index = 0, focus = false) {
@@ -1363,11 +1302,6 @@ let setupTimer = null;
 const $setup = el("div", { class: "modal", hidden: true, role: "dialog", "aria-modal": "true",
                            "aria-labelledby": "setup-title" });
 document.body.append($setup);
-
-function gigabytes(bytes) {
-  return (bytes / 1e9).toLocaleString("it-IT", { minimumFractionDigits: 1,
-                                                 maximumFractionDigits: 1 }) + " GB";
-}
 
 function modelsReady() {
   if (models.state === "ready") return true;
