@@ -63,3 +63,6 @@ docs/PLAN.md
 
 # Decision notes: internal, kept local
 docs/decisions/
+
+# Local agent tooling: launch config and third-party skills, not part of the product
+.claude/
