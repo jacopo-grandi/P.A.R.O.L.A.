@@ -21,3 +21,5 @@ jobs:
       - run: uv run --frozen ruff check .
       - run: uv run --frozen ruff format --check .
       - run: uv run --frozen pytest
+      # The UI helpers run on the runner's preinstalled Node: built-in runner, no packages.
+      - run: node --test tests/test_helpers.js
