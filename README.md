@@ -17,8 +17,12 @@ Status: in development; the native Mac app works.
 
 ## What it looks like
 
-The call in these pictures is invented: a short dialogue about a balcony garden, voiced by two
-macOS text-to-speech voices and transcribed by the app as it is. The mistakes are Whisper's own.
+![One minute in P.A.R.O.L.A.: a call opens, playback follows the words, N reviews the doubtful ones, a wrong word is corrected, find and the doubts filter narrow the text, and the export menu closes the tour](docs/assets/demo.gif)
+
+The call in the demo above is an invented dialogue about a balcony garden, written by hand and
+loaded into the app to show the workflow. The call in the pictures below is invented too, but
+voiced by two macOS text-to-speech voices and transcribed by the app as it is: those mistakes
+are Whisper's own.
 
 **Review only the doubtful words.** Words that a second model does not confirm are underlined.
 N opens the next one, plays just that passage and makes it editable; Enter saves or confirms.
