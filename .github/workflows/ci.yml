@@ -1,0 +1,23 @@
+# Lint and the fast test suite, on Apple Silicon (the mlx wheels need arm64 macOS).
+# The slow tests (-m slow) run the real model and stay local: no model downloads in CI.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Real audio fixtures are generated with ffmpeg; without it those tests would be skipped.
+      - run: brew install ffmpeg
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen pytest

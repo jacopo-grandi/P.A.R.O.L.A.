@@ -182,7 +182,7 @@ uv run parola audit summary audit-answers.json          # after exporting the an
 ```
 
 Transcription rules: [`docs/conventions.md`](docs/conventions.md). Annotation guide:
-[`docs/annotation.md`](docs/annotation.md) (both in Italian).
+[`docs/annotation.md`](docs/annotation.md).
 
 ## Development
 
