@@ -52,6 +52,7 @@ def test_list_recordings(client):
 def test_get_recording(client):
     data = client.get("/api/recordings/call").json()
     assert data["audio"] == {"mic": "/audio/call/mic", "system": "/audio/call/system"}
+    assert data["loudness"] == {}  # the fake wavs cannot be measured: played as recorded
     assert data["segments"][0]["words"][2]["doubtful"] is True
 
 
@@ -190,7 +191,11 @@ def test_a_compressed_call_is_listed_and_played_as_wav(client, folder):
                         "sine=duration=1:sample_rate=16000", "-c:a", "flac",
                         str(folder / f"call.{c}.flac")], check=True)  # fmt: skip
     assert [r["name"] for r in client.get("/api/recordings").json()] == ["call"]
-    assert set(client.get("/api/recordings/call").json()["audio"]) == {"mic", "system"}
+    data = client.get("/api/recordings/call").json()
+    assert set(data["audio"]) == {"mic", "system"}
+    # The channels' loudness rides along, for the player's per-channel gain.
+    assert set(data["loudness"]) == {"mic", "system"}
+    assert all(-70 < v < 0 for v in data["loudness"].values())
     r = client.get("/audio/call/mic", headers={"Range": "bytes=0-3"})
     # The player gets WAV, which WebKit can seek in, and can ask for parts of it.
     assert r.status_code == 206 and r.headers["content-type"] == "audio/wav"

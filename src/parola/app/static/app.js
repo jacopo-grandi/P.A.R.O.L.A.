@@ -303,6 +303,8 @@ function renderResults() {
 let rec = null;      // recording being shown
 let recName = null;
 let players = {};    // channel -> <audio>
+let gains = {};      // channel -> linear playback gain (1 = as recorded)
+let audioCtx = null; // Web Audio, created on the first boosted play (a user gesture)
 let words = [];      // flat list of {el, channel, start, end, doubtful, seg, k}
 let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
 let current = null;  // word element being played
@@ -340,10 +342,40 @@ function duration() {
   return (rec && rec.summary.duration) || (segs.length ? segs[segs.length - 1].end : 0);
 }
 
+// A quiet channel is raised at playback only, never in the stored file: the element is
+// routed through a gain and a limiter (a boosted track can hold a full-scale pop that a
+// bare gain would clip). Wired lazily on the first play — a user gesture, so the context
+// may start — and only when there is something to raise: WebKit routes a wired element
+// through the context alone, so the others keep the plain path.
+function amplify(channel) {
+  const p = players[channel];
+  const g = gains[channel] || 1;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!p || g === 1 || p.dataset.wired || !Ctx) return;
+  try {
+    audioCtx = audioCtx || new Ctx();
+    const source = audioCtx.createMediaElementSource(p);
+    const gain = audioCtx.createGain();
+    gain.gain.value = g;
+    const limiter = audioCtx.createDynamicsCompressor();
+    limiter.threshold.value = -1; // squash only what would clip
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.05;
+    source.connect(gain);
+    gain.connect(limiter);
+    limiter.connect(audioCtx.destination);
+    p.dataset.wired = "1";
+  } catch (e) { /* no Web Audio: play as recorded */ }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+}
+
 function play(word, until) {
   const p = players[word.channel];
   if (!p) return;
   for (const [c, q] of Object.entries(players)) if (c !== word.channel) q.pause();
+  amplify(word.channel);
   p.currentTime = Math.max(0, word.start - LEAD);
   stopAt = until === undefined ? null : { channel: word.channel, t: until };
   lastChannel = word.channel;
@@ -358,7 +390,7 @@ function togglePlay() {
   const w = current && words.find(w => w.el === current);
   const channel = w ? w.channel : lastChannel || Object.keys(players)[0];
   const q = players[channel];
-  if (q) { stopAt = null; lastChannel = channel; q.play().catch(() => {}); }
+  if (q) { stopAt = null; lastChannel = channel; amplify(channel); q.play().catch(() => {}); }
 }
 
 function seek(seconds) {
@@ -850,8 +882,12 @@ async function showRecording(name, data = null) {
   renderPending();
   data = data || await getJSON(`/api/recordings/${enc(name)}`);
   players = {};
+  gains = {};
   lastChannel = null;
   $audio.replaceChildren();
+  for (const [channel, lufs] of Object.entries(data.loudness || {})) {
+    gains[channel] = playbackGain(lufs);
+  }
   for (const [channel, url] of Object.entries(data.audio)) {
     const a = el("audio", { preload: "metadata", src: url });
     a.addEventListener("timeupdate", () => follow(channel));
@@ -874,6 +910,7 @@ function showWaiting(name) {
   stopAll();
   find = null;
   players = {};
+  gains = {};
   $audio.replaceChildren();
   rec = null;
   recName = name;

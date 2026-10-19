@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from parola import editing
 from parola.audio import channel_file
+from parola.audio.loudness import channel_loudness
 from parola.audio.playback import forget, playable
 from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
@@ -292,8 +293,11 @@ def create_app(folder: Path, session: RecordingSession | None = None,
         ids = sorted({sg.speaker for sg in t.segments if sg.speaker},
                      key=lambda v: (v.split(":")[0], int(v.split(":")[1])))  # fmt: skip
         data["voices"] = {v: speaker_name(t, v) for v in ids}
-        data["audio"] = {c: f"/audio/{name}/{c}" for c in CHANNELS
-                         if channel_file(folder, name, c)}  # fmt: skip
+        files = {c: p for c in CHANNELS if (p := channel_file(folder, name, c))}
+        data["audio"] = {c: f"/audio/{name}/{c}" for c in files}
+        # How loud each channel is: the player raises a quiet mic track to the others' level
+        # at playback (static/helpers.js). Not while recording: the file is still growing.
+        data["loudness"] = {} if data["provisional"] else channel_loudness(folder, files)
         return data
 
     def _load(name: str) -> tuple[Transcript, Path]:

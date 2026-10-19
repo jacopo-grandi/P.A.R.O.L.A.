@@ -6,7 +6,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-        fold, forms, findMatches, doubtfulRuns, pickRun } =
+        fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain } =
   require("../src/parola/app/static/helpers.js");
 
 // ---------------------------------------------------------------- formatting
@@ -205,4 +205,34 @@ test("pickRun: the run just reached is not offered again", () => {
 
 test("pickRun: no runs, nothing to pick", () => {
   assert.equal(pickRun([], 1, 0), null);
+});
+
+// ---------------------------------------------------------------- playback gain
+
+test("playbackGain: a quiet channel is raised to -18 LUFS", () => {
+  // -38 LUFS needs +20 dB: a linear gain of 10.
+  assert.ok(Math.abs(playbackGain(-38) - 10) < 1e-9);
+  // -24 LUFS needs +6 dB: very close to 2.
+  assert.ok(Math.abs(playbackGain(-24) - 1.995) < 0.01);
+});
+
+test("playbackGain: never more than +30 dB", () => {
+  // -49 LUFS (a real headset mic) would need +31 dB; the boost stops at 10^(30/20).
+  assert.ok(Math.abs(playbackGain(-49) - 31.623) < 0.01);
+  assert.equal(playbackGain(-60), playbackGain(-69.9));
+});
+
+test("playbackGain: a loud channel is never lowered", () => {
+  assert.equal(playbackGain(-16), 1);   // the system track of a real call
+  assert.equal(playbackGain(-18), 1);   // exactly on target
+  assert.equal(playbackGain(-3), 1);
+});
+
+test("playbackGain: unknown or silent plays as recorded", () => {
+  assert.equal(playbackGain(undefined), 1);
+  assert.equal(playbackGain(null), 1);
+  assert.equal(playbackGain(NaN), 1);
+  assert.equal(playbackGain("-40"), 1);        // a string is not a measurement
+  assert.equal(playbackGain(-70), 1);          // ebur128's floor: an empty track
+  assert.equal(playbackGain(-Infinity), 1);
 });

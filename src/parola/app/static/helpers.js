@@ -103,8 +103,24 @@ function pickRun(runs, direction, pos) {
   return found || (direction > 0 ? ordered[0] : ordered[ordered.length - 1]);
 }
 
+// ---------------------------------------------------------------- playback gain
+
+// A quiet channel is raised towards TARGET_LUFS at playback (in a recorded call the mic
+// track can sit 30 dB under the others'); a loud one is never lowered. The server measures
+// (parola.audio.loudness), this decides: the whole policy in one testable place.
+const TARGET_LUFS = -18;
+const MAX_BOOST_DB = 30;
+
+function playbackGain(lufs) {
+  // Linear gain for a channel measured at `lufs` integrated; 1 when unknown or silent
+  // (-70 is ebur128's floor: an empty track, where a boost would only raise the hiss).
+  if (typeof lufs !== "number" || !isFinite(lufs) || lufs <= -70) return 1;
+  const db = Math.min(Math.max(TARGET_LUFS - lufs, 0), MAX_BOOST_DB);
+  return Math.pow(10, db / 20);
+}
+
 // In the browser these are plain globals shared with app.js; in Node the tests import them.
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-                     fold, forms, findMatches, doubtfulRuns, pickRun };
+                     fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain };
 }
