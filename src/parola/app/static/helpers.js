@@ -93,6 +93,26 @@ function doubtfulRuns(list, seg, channel, segStart) {
   return found;
 }
 
+// Whisper writes the same line over and over on long noise ("Thank you." every window of a
+// noisy break): the transcript keeps every line, the view shows the first with "× N".
+const REPEAT_MIN = 3;
+
+function repeatedRuns(segs) {
+  // `segs` holds per segment: its shown text, whether every word is doubtful, and the
+  // channel/speaker key that must not change inside a run. Ranges as {start, end} indices.
+  const out = [];
+  let s = 0;
+  for (let i = 1; i <= segs.length; i++) {
+    const same = i < segs.length && segs[i].doubtful && segs[s].doubtful
+      && segs[i].text === segs[s].text && segs[i].key === segs[s].key;
+    if (!same) {
+      if (segs[s].doubtful && i - s >= REPEAT_MIN) out.push({ start: s, end: i });
+      s = i;
+    }
+  }
+  return out;
+}
+
 function pickRun(runs, direction, pos) {
   // The next (or previous) run after `pos` seconds, wrapping around at the ends. The small
   // tolerance keeps the run just opened from being offered again.
@@ -130,6 +150,6 @@ function startedRecording(prevState, newState) {
 // In the browser these are plain globals shared with app.js; in Node the tests import them.
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-                     fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain,
-                     startedRecording };
+                     fold, forms, findMatches, doubtfulRuns, repeatedRuns, pickRun,
+                     playbackGain, startedRecording };
 }

@@ -576,7 +576,7 @@ function relabel() {
   // The speaker is written only when it changes, counting only the visible lines.
   let prev = null;
   for (const turn of view.body.querySelectorAll(".turn")) {
-    if (turn.classList.contains("hidden")) continue;
+    if (turn.classList.contains("hidden") || turn.classList.contains("fold")) continue;
     const who = turn.querySelector(".who");
     who.hidden = !who.textContent || turn.dataset.key === prev;
     prev = turn.dataset.key;
@@ -602,11 +602,23 @@ async function render(data, after) {
   view = {};
 
   const body = el("div", { class: "transcript" });
+  // Identical doubtful lines in a row ("Thank you." written over a noisy stretch, decision
+  // 0040): the transcript keeps them all, the view shows the first with "× N" and folds the
+  // rest until the badge is clicked.
+  const folded = repeatedRuns(rec.segments.map(s => ({
+    text: (s.text || "").trim(),
+    doubtful: s.words.length > 0 && s.words.every(w => w.doubtful),
+    key: `${s.channel || "mic"}|${s.speaker || ""}`,
+  })));
+  const leads = new Map(folded.map(f => [f.start, f]));
+  const inFold = new Map(); // member index (after the first) -> the run it belongs to
+  for (const f of folded) for (let i = f.start + 1; i < f.end; i++) inFold.set(i, f);
   rec.segments.forEach((seg, si) => {
     const channel = seg.channel || "mic";
     const text = el("div", { class: "text" });
     const list = seg.words.length ? seg.words : [{ text: seg.text, start: seg.start, end: seg.end }];
-    runs.push(...doubtfulRuns(list, si, channel, seg.start));
+    // Folded lines are left out of the N-cycle: reviewing the shown one stands for the run.
+    if (!inFold.has(si)) runs.push(...doubtfulRuns(list, si, channel, seg.start));
     list.forEach((w, k) => {
       const start = w.start ?? seg.start, end = w.end ?? seg.end;
       const span = el("span", { class: "w" + (w.doubtful ? " doubt" : "") }, w.text);
@@ -622,6 +634,22 @@ async function render(data, after) {
       words.push(word);
       text.append(span, k < list.length - 1 ? " " : "");
     });
+    const lead = leads.get(si);
+    if (lead) {
+      const n = lead.end - lead.start;
+      const badge = el("button", { class: "fold-count", "aria-expanded": "false",
+        title: `Riga identica e dubbia ${n} volte di seguito (spesso rumore trascritto ` +
+               "male): clic per mostrare o nascondere le altre" }, `× ${n}`);
+      badge.addEventListener("click", () => {
+        const open = badge.getAttribute("aria-expanded") === "true";
+        for (const t of body.querySelectorAll(`.turn[data-fold="${lead.start}"]`)) {
+          t.classList.toggle("fold", open);
+        }
+        badge.setAttribute("aria-expanded", String(!open));
+        relabel();
+      });
+      text.append(" ", badge);
+    }
     const first = words[words.length - list.length];
     // lang per line: an English line is hyphenated and read aloud as English.
     const voiced = VOICED.includes(channel) && Object.keys(rec.voices || {}).length > 0;
@@ -631,7 +659,9 @@ async function render(data, after) {
                        onclick: e => renameVoice(e.currentTarget, seg.speaker) },
           rec.voices[seg.speaker] || seg.speaker)
       : el("div", { class: `who ${channel}` }, LABELS[channel] ?? channel);
-    body.append(el("div", { class: "turn", lang: seg.lang || null, "data-channel": channel,
+    body.append(el("div", { class: inFold.has(si) ? "turn fold" : "turn",
+                            "data-fold": inFold.has(si) ? String(inFold.get(si).start) : null,
+                            lang: seg.lang || null, "data-channel": channel,
                             // String(), not the boolean: el() writes `true` as an empty
                             // attribute, and the doubts filter compares against "true".
                             "data-key": key, "data-doubt": String(seg.words.some(w => w.doubtful)) },

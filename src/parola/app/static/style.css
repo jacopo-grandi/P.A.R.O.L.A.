@@ -196,7 +196,7 @@ input.inline {
               padding: 16px 32px 96px; }
 .turn { display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 20px; padding: 3px 0;
         align-items: baseline; }
-.turn.hidden { display: none; }
+.turn.hidden, .turn.fold { display: none; }
 .turn .t { font: var(--text-caption) var(--font-num); color: var(--fg-3); text-align: right;
            cursor: pointer; user-select: none; font-variant-numeric: tabular-nums; }
 .turn .t:hover { color: var(--fg-2); }
@@ -228,6 +228,10 @@ input.inline {
 .w.hit { background: rgba(255, 255, 255, 0.12); box-shadow: inset 0 -2px 0 var(--fg-2); }
 .w.hit-now { background: rgba(255, 255, 255, 0.28); box-shadow: inset 0 -2px 0 var(--fg); }
 .w.editing { display: none; }
+.fold-count { font: var(--text-caption) var(--font-num); color: var(--fg-3); padding: 0 6px;
+  margin-left: 6px; border: 1px solid var(--line); border-radius: 9px; background: none;
+  cursor: pointer; vertical-align: 2px; }
+.fold-count:hover, .fold-count[aria-expanded="true"] { color: var(--fg-2); border-color: var(--fg-3); }
 input.edit {
   font: inherit; padding: 0 4px; margin: 0 1px; border-radius: 4px;
   border: 1px solid var(--doubt); background: #1a1700; color: var(--fg); outline: none;

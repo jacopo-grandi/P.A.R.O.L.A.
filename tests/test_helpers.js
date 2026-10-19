@@ -6,7 +6,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-        fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain, startedRecording } =
+        fold, forms, findMatches, doubtfulRuns, repeatedRuns, pickRun, playbackGain,
+        startedRecording } =
   require("../src/parola/app/static/helpers.js");
 
 // ---------------------------------------------------------------- formatting
@@ -182,6 +183,46 @@ test("doubtfulRuns: consecutive doubtful words become one run", () => {
 test("doubtfulRuns: a word without a start falls back to the segment start", () => {
   assert.deepEqual(doubtfulRuns([W("ehm", undefined, true)], 0, "mic", 7.5),
                    [{ seg: 0, start: 0, end: 1, t: 7.5, channel: "mic" }]);
+});
+
+// ---------------------------------------------------------------- repeated doubtful lines
+
+function S(text, doubtful = true, key = "mixed|") {
+  return { text, doubtful, key };
+}
+
+test("repeatedRuns: three or more identical doubtful lines fold into one run", () => {
+  // The hallucination shape: "Thank you." written over every window of a noisy stretch.
+  assert.deepEqual(repeatedRuns([S("Ecco.", false), S("Thank you."), S("Thank you."),
+                                 S("Thank you."), S("Thank you."), S("Va bene.", false)]),
+                   [{ start: 1, end: 5 }]);
+  // Two in a row can be real speech ("Sì. Sì."): left alone.
+  assert.deepEqual(repeatedRuns([S("Thank you."), S("Thank you."), S("Ecco.", false)]), []);
+  // A run that reaches the end of the call still closes.
+  assert.deepEqual(repeatedRuns([S("Ciao.", false), S("Grazie."), S("Grazie."), S("Grazie.")]),
+                   [{ start: 1, end: 4 }]);
+});
+
+test("repeatedRuns: only lines made of doubtful words fold", () => {
+  // The same goodbye said three times for real is not an hallucination.
+  assert.deepEqual(repeatedRuns([S("Grazie.", false), S("Grazie.", false), S("Grazie.", false)]),
+                   []);
+  // One sure line in the middle breaks the run.
+  assert.deepEqual(repeatedRuns([S("Thank you."), S("Thank you."), S("Thank you.", false),
+                                 S("Thank you."), S("Thank you.")]), []);
+});
+
+test("repeatedRuns: a different text, channel or speaker breaks the run", () => {
+  assert.deepEqual(repeatedRuns([S("Thank you."), S("Thank you. Thank you."), S("Thank you.")]),
+                   []);
+  assert.deepEqual(repeatedRuns([S("Thank you."), S("Thank you.", true, "mixed|mixed:2"),
+                                 S("Thank you.")]), []);
+  // Two runs separated by another speaker's line each fold on their own.
+  const thanks = key => S("Thank you.", true, key);
+  assert.deepEqual(
+    repeatedRuns([thanks("a"), thanks("a"), thanks("a"), S("Yeah.", true, "b"),
+                  thanks("a"), thanks("a"), thanks("a")]),
+    [{ start: 0, end: 3 }, { start: 4, end: 7 }]);
 });
 
 // ---------------------------------------------------------------- picking the next run
