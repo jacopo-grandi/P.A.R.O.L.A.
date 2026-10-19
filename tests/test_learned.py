@@ -71,6 +71,25 @@ def test_the_suggestion_replaces_only_the_matching_words():
     assert s.text == "il Orto-Lab"
 
 
+def test_a_term_differing_only_in_case_and_dots_is_still_suggested():
+    # "parola" corrected to "P.A.R.O.L.A.": same letters, but the correction IS the spelling.
+    t = [corrected(["parliamo di parola adesso"], [(0, 2, 3, "P.A.R.O.L.A.")]) for _ in range(2)]
+    terms = learn(t)
+    assert terms["parola"].count == 2
+    (s,) = suggest("parola", terms)
+    assert (s.term, s.exact) == ("P.A.R.O.L.A.", True)
+    assert suggest("P.A.R.O.L.A.", terms) == []  # already written that way
+    assert suggest("P.A.R.O.L.A.,", terms) == []  # even with punctuation attached
+
+
+def test_a_case_only_brand_correction_is_learned():
+    # "zentrix" -> "Zentrix": same letters and sounds, but the brand's casing is the point.
+    t = [corrected(["usiamo zentrix qui"], [(0, 1, 2, "Zentrix")]) for _ in range(2)]
+    (s,) = suggest("zentrix", learn(t))
+    assert (s.term, s.exact) == ("Zentrix", True)
+    assert suggest("Zentrix", learn(t)) == []  # already written that way
+
+
 def test_nothing_is_suggested_for_what_is_already_right():
     t = [corrected(["il orto lap"], [(0, 1, 3, "Orto-Lab")]) for _ in range(2)]
     assert suggest("Orto-Lab", learn(t)) == []

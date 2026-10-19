@@ -36,6 +36,8 @@ MIN_CORRECTIONS = 2
 RARE_ZIPF = 3.5
 # Spellings this close (difflib ratio on the letters) are offered as suggestions.
 SIMILAR = 0.75
+# Punctuation that may cling to a word's edges without changing its spelling.
+EDGE = '.,;:!?…"“”«»()'
 
 
 @dataclass
@@ -61,7 +63,7 @@ def _zipf(word: str, lang: str) -> float:
 def is_term(text: str, lang: str = "it") -> bool:
     """A name, an acronym, a word with digits or a hyphen, or a word rare in ``lang``: English
     terms in Italian speech ("baking soda") are what the model gets wrong."""
-    words = [w.strip('.,;:!?…"“”«»()') for w in text.split()]
+    words = [w.strip(EDGE) for w in text.split()]
     words = [w for w in words if w]
     if not words or len(words) > MAX_TERM_WORDS:
         return False
@@ -79,6 +81,13 @@ def _letters(text: str) -> str:
     return re.sub(r"[\W_]+", "", fold(text))
 
 
+def _as_written(span: str, term: str) -> bool:
+    """The span already shows the term's exact spelling (edge punctuation aside). Compared as
+    displayed, not by letters: "parola" is not "P.A.R.O.L.A.", the correction IS the case and
+    the dots."""
+    return [w.strip(EDGE) for w in span.split()] == [w.strip(EDGE) for w in term.split()]
+
+
 def learn(transcripts: list[Transcript]) -> dict[str, Term]:
     """Terms by their folded form, from every correction in ``transcripts``."""
     terms: dict[str, Term] = {}
@@ -89,9 +98,9 @@ def learn(transcripts: list[Transcript]) -> dict[str, Term]:
             lang = t.segments[edit.segment].lang if edit.segment < len(t.segments) else None
             if not is_term(edit.text, lang or "it"):
                 continue
+            # Case- or punctuation-only corrections teach too: a brand's exact spelling
+            # ("zentrix" -> "Zentrix") is precisely what no model knows.
             heard = " ".join(fold(w.text) for w in edit.before)
-            if heard == " ".join(fold(w) for w in edit.text.split()):
-                continue  # only the case or the punctuation changed
             key = _letters(edit.text)
             term = terms.setdefault(key, Term(edit.text))
             term.text = edit.text  # the latest spelling wins
@@ -111,8 +120,8 @@ def suggest(text: str, terms: dict[str, Term], limit: int = 3) -> list[Suggestio
             if not letters:
                 continue
             for key, term in terms.items():
-                if key == letters or term.count < MIN_CORRECTIONS:
-                    continue  # already written that way, or not learned yet
+                if term.count < MIN_CORRECTIONS or _as_written(span, term.text):
+                    continue  # not learned yet, or already written that way
                 exact = term.heard[heard] > 0
                 ratio = max([SequenceMatcher(None, letters, key).ratio()]
                             + [SequenceMatcher(None, letters, _letters(h)).ratio()
