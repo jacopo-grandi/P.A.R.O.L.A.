@@ -1142,6 +1142,12 @@ function setRecState(st) {
   const prev = recState;
   recState = st;
   recAt = Date.now();
+  // A new recording captures the system audio: a call playing in the app would be recorded
+  // over the real one, so playback pauses by itself, however the recording was started.
+  if (startedRecording(prev.state, st.state) && playing()) {
+    stopAll();
+    toast("Riproduzione in pausa: registrazione avviata");
+  }
   renderRecorder();
   if (st.state === "transcribing" && st.preview && st.name &&
       (st.preview !== prev.preview || st.revision !== prev.revision)) {

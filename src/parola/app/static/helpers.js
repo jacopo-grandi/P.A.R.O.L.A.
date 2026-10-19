@@ -119,8 +119,17 @@ function playbackGain(lufs) {
   return Math.pow(10, db / 20);
 }
 
+// ---------------------------------------------------------------- recorder state
+
+function startedRecording(prevState, newState) {
+  // The moment a recording begins, from any side (button, menu bar, CLI): the recorder's
+  // state is polled, so only the transition counts — pausing inside a recording does not.
+  return newState === "recording" && prevState !== "recording";
+}
+
 // In the browser these are plain globals shared with app.js; in Node the tests import them.
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-                     fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain };
+                     fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain,
+                     startedRecording };
 }

@@ -6,7 +6,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-        fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain } =
+        fold, forms, findMatches, doubtfulRuns, pickRun, playbackGain, startedRecording } =
   require("../src/parola/app/static/helpers.js");
 
 // ---------------------------------------------------------------- formatting
@@ -235,4 +235,16 @@ test("playbackGain: unknown or silent plays as recorded", () => {
   assert.equal(playbackGain("-40"), 1);        // a string is not a measurement
   assert.equal(playbackGain(-70), 1);          // ebur128's floor: an empty track
   assert.equal(playbackGain(-Infinity), 1);
+});
+
+// ---------------------------------------------------------------- recorder state
+
+test("startedRecording: only the transition into recording counts", () => {
+  assert.equal(startedRecording("idle", "recording"), true);
+  assert.equal(startedRecording("done", "recording"), true);
+  assert.equal(startedRecording("error", "recording"), true);
+  assert.equal(startedRecording("recording", "recording"), false);  // polled again, or paused
+  assert.equal(startedRecording("recording", "transcribing"), false);
+  assert.equal(startedRecording("idle", "idle"), false);
+  assert.equal(startedRecording("transcribing", "done"), false);
 });
