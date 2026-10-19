@@ -14,26 +14,29 @@ How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY
 
 Status: in development; the native Mac app works.
 
-![A call in P.A.R.O.L.A.: the transcript with each voice named, doubtful words underlined in yellow, and the player with a tick for every doubtful passage](docs/assets/screenshots/call.png)
+![The demo call in P.A.R.O.L.A.: the transcript with the voice named, the calls in the sidebar, and the player with every doubt reviewed](docs/assets/screenshots/call.png)
 
 ## What it looks like
 
-![One minute in P.A.R.O.L.A.: a call opens, playback follows the words, N reviews the doubtful ones, a wrong word is corrected, find and the doubts filter narrow the text, and the export menu closes the tour](docs/assets/demo.gif)
+![Forty seconds in P.A.R.O.L.A.: a call is recorded with the floating recorder, transcribed, a doubtful word is corrected with a learned suggestion, exported, found with search and renamed](docs/assets/demo.gif)
 
-The call in the demo above is an invented dialogue about a balcony garden, written by hand and
-loaded into the app to show the workflow. The call in the pictures below is invented too, but
-voiced by two macOS text-to-speech voices and transcribed by the app as it is: those mistakes
-are Whisper's own.
+[The same demo as a video, with audio](https://github.com/jacopo-grandi/parola/releases/download/v0.1.0/parola-demo.mp4).
+
+The demo is a real recording of an invented line, transcribed by the app as it is: Whisper
+hears "Parola" where "P.A.R.O.L.A." was said, and the review fixes it with a suggestion learned
+from earlier corrections. The pictures come from the same recording, except the call still
+being transcribed below, an invented dialogue voiced by two macOS text-to-speech voices.
 
 **Review only the doubtful words.** Words that a second model does not confirm are underlined.
 N opens the next one, plays just that passage and makes it editable; Enter saves or confirms.
+Terms you corrected before are offered as one-click suggestions.
 
-![Correcting a doubtful passage: the words are in an edit field while their audio plays](docs/assets/screenshots/review.png)
+![Correcting the doubtful word "Parola": it is in an edit field while its audio plays, with the suggestion P.A.R.O.L.A. learned from past corrections](docs/assets/screenshots/review.png)
 
 **Search every call.** The search box finds a word in all the transcripts (accents and elided
 articles ignored) and lists where each call says it; Cmd-F finds it inside the call.
 
-![Searching for "basilico": the results in the sidebar and every occurrence marked in the text](docs/assets/screenshots/search.png)
+![Searching for "demo": the sidebar lists where each call says it, with a snippet](docs/assets/screenshots/search.png)
 
 **Read while it transcribes.** The text grows as Whisper writes it; the doubtful words and the
 voices are added when they are ready.
@@ -44,7 +47,7 @@ voices are added when they are ready.
 or any other app, with the time, the levels of both sides, pause and stop. It shrinks to a dot
 and can be dragged anywhere.
 
-<p><img src="docs/assets/screenshots/recorder.png" alt="The floating recorder: a red dot, 12:34, two level meters, pause, stop and shrink" width="252">
+<p><img src="docs/assets/screenshots/recorder.png" alt="The floating recorder: a red dot, 00:06, the levels of both sides, pause, stop and shrink" width="252">
 &nbsp;<img src="docs/assets/screenshots/recorder-dot.png" alt="The recorder shrunk to a dot" width="40"></p>
 
 **Asked, never assumed.** On the first start the app says which models it needs and downloads
