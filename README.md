@@ -20,7 +20,7 @@ Status: in development; the native Mac app works.
 
 ![Forty seconds in P.A.R.O.L.A.: a call is recorded with the floating recorder, transcribed, a doubtful word is corrected with a learned suggestion, exported, found with search and renamed](docs/assets/demo.gif)
 
-[The same demo as a video, with audio](https://github.com/jacopo-grandi/parola/releases/download/v0.1.0/parola-demo.mp4).
+[The same demo as a video](https://github.com/jacopo-grandi/parola/releases/download/v0.1.0/parola-demo.mp4).
 
 The demo is a real recording of an invented line, transcribed by the app as it is: Whisper
 hears "Parola" where "P.A.R.O.L.A." was said, and the review fixes it with a suggestion learned
