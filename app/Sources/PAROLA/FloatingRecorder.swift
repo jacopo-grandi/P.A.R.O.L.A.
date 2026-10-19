@@ -19,20 +19,27 @@ final class DraggableHostingView<Content: View>: NSHostingView<Content> {
 
 /// A view under the panel's content that moves the window while the mouse is dragged, since
 /// a borderless panel whose content is SwiftUI does not move by itself. A press that barely
-/// moves is a click: ``onClick`` (the dot opens on a click).
+/// moves is a click: ``onClick`` (the dot opens on a click); the second of a double click is
+/// ``onDoubleClick`` (the main window, from the dot or the panel).
 struct DragArea: NSViewRepresentable {
     var onClick: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
 
     func makeNSView(context: Context) -> DragView {
         let view = DragView()
         view.onClick = onClick
+        view.onDoubleClick = onDoubleClick
         return view
     }
 
-    func updateNSView(_ view: DragView, context: Context) { view.onClick = onClick }
+    func updateNSView(_ view: DragView, context: Context) {
+        view.onClick = onClick
+        view.onDoubleClick = onDoubleClick
+    }
 
     final class DragView: NSView {
         var onClick: (() -> Void)?
+        var onDoubleClick: (() -> Void)?
 
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -52,6 +59,8 @@ struct DragArea: NSViewRepresentable {
             }
             if moved {
                 window.saveFrame(usingName: "PAROLARecorder")
+            } else if event.clickCount >= 2, let onDoubleClick {
+                onDoubleClick()
             } else {
                 onClick?()
             }
@@ -184,10 +193,11 @@ struct RecorderView: View {
             Circle().fill(Color.black.opacity(0.88))
             Circle().strokeBorder(Color.white.opacity(0.12))
             dot.allowsHitTesting(false)
-            // On top: a click opens the panel, a drag moves the dot.
-            DragArea(onClick: model.toggleSize).clipShape(Circle())
+            // On top: a click opens the panel, a double click the app, a drag moves the dot.
+            DragArea(onClick: model.toggleSize, onDoubleClick: { AppDelegate.shared?.showMainWindow() })
+                .clipShape(Circle())
         }
-        .help("In registrazione: clic per aprire, trascina per spostare")
+        .help("In registrazione: clic per aprire il pannello, doppio clic per P.A.R.O.L.A., trascina per spostare")
         .frame(width: FloatingRecorder.icon.width, height: FloatingRecorder.icon.height)
     }
 
@@ -218,8 +228,8 @@ struct RecorderView: View {
         }
         .padding(.horizontal, 14)
         .frame(width: FloatingRecorder.full.width, height: FloatingRecorder.full.height)
-        // Anywhere but the buttons drags the panel.
-        .background(DragArea(onClick: nil))
+        // Anywhere but the buttons drags the panel; a double click brings the app in front.
+        .background(DragArea(onClick: nil, onDoubleClick: { AppDelegate.shared?.showMainWindow() }))
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.88)))
         .overlay(
