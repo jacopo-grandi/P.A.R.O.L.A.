@@ -6,8 +6,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-        fold, forms, findMatches, doubtfulRuns, repeatedRuns, pickRun, playbackGain,
-        startedRecording } =
+        fold, forms, findMatches, doubtfulRuns, repeatUnit, repeatedRuns, wordLoop, pickRun,
+        playbackGain, startedRecording } =
   require("../src/parola/app/static/helpers.js");
 
 // ---------------------------------------------------------------- formatting
@@ -212,6 +212,16 @@ test("repeatedRuns: only lines made of doubtful words fold", () => {
                                  S("Thank you."), S("Thank you.")]), []);
 });
 
+test("repeatUnit: a line boils down to its smallest repeating unit", () => {
+  assert.equal(repeatUnit(["thank", "you"]), "thank you");
+  // "Thank you. Thank you." folds with "Thank you.": same unit.
+  assert.equal(repeatUnit(["thank", "you", "thank", "you"]), "thank you");
+  assert.equal(repeatUnit(["ok", "ok", "ok"]), "ok");
+  // No repetition: the whole line is the unit.
+  assert.equal(repeatUnit(["thank", "you", "thank"]), "thank you thank");
+  assert.equal(repeatUnit([]), "");
+});
+
 test("repeatedRuns: a different text, channel or speaker breaks the run", () => {
   assert.deepEqual(repeatedRuns([S("Thank you."), S("Thank you. Thank you."), S("Thank you.")]),
                    []);
@@ -223,6 +233,38 @@ test("repeatedRuns: a different text, channel or speaker breaks the run", () => 
     repeatedRuns([thanks("a"), thanks("a"), thanks("a"), S("Yeah.", true, "b"),
                   thanks("a"), thanks("a"), thanks("a")]),
     [{ start: 0, end: 3 }, { start: 4, end: 7 }]);
+});
+
+// ---------------------------------------------------------------- loops inside one line
+
+function L(text, doubtful = true) {
+  return { text, doubtful };
+}
+
+test("wordLoop: a doubtful phrase looping inside one line is found", () => {
+  // "and check out this page" repeated: a prefix and a suffix do not stop it.
+  const unit = ["and", "check", "out", "this", "page"];
+  const ws = [L("so"),
+              ...unit.map(w => L(w)), ...unit.map(w => L(w)), ...unit.map(w => L(w)),
+              L("is"), L("our"), L("file")];
+  assert.deepEqual(wordLoop(ws), { start: 1, len: 5, repeats: 3 });
+});
+
+test("wordLoop: real speech does not fold", () => {
+  // Sure words never loop away, however many times they repeat.
+  assert.equal(wordLoop(Array(30).fill(L("page", false))), null);
+  // A short doubtful stutter ("no no no") hides too few words to be a loop.
+  assert.equal(wordLoop([L("no"), L("no"), L("no"), L("dai")]), null);
+  // Two repeats are quotation, not a loop.
+  const unit = ["check", "out", "this", "page", "now", "please"];
+  assert.equal(wordLoop([...unit.map(w => L(w)), ...unit.map(w => L(w))]), null);
+});
+
+test("wordLoop: the loop hiding the most words wins", () => {
+  const a = ["ok", "ok", "ok", "ok"].map(w => L(w)); // len 1, hides 3: too few
+  const unit = ["check", "this", "page"];
+  const b = [...unit, ...unit, ...unit, ...unit, ...unit, ...unit].map(w => L(w));
+  assert.deepEqual(wordLoop([...a, ...b]), { start: 4, len: 3, repeats: 6 });
 });
 
 // ---------------------------------------------------------------- picking the next run

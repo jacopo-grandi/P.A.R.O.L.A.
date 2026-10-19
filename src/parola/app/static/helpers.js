@@ -97,6 +97,17 @@ function doubtfulRuns(list, seg, channel, segStart) {
 // noisy break): the transcript keeps every line, the view shows the first with "× N".
 const REPEAT_MIN = 3;
 
+function repeatUnit(texts) {
+  // A line's smallest repeating unit, so "Thank you. Thank you." folds with "Thank you.":
+  // folded words in, the unit out as one string.
+  const t = texts.filter(Boolean);
+  for (let len = 1; len <= t.length; len++) {
+    if (t.length % len) continue;
+    if (t.every((w, i) => w === t[i % len])) return t.slice(0, len).join(" ");
+  }
+  return t.join(" ");
+}
+
 function repeatedRuns(segs) {
   // `segs` holds per segment: its shown text, whether every word is doubtful, and the
   // channel/speaker key that must not change inside a run. Ranges as {start, end} indices.
@@ -111,6 +122,34 @@ function repeatedRuns(segs) {
     }
   }
   return out;
+}
+
+// The other hallucination shape: one segment looping a phrase ("and check out this page and
+// check out this page and..."). The repeats after the first fold behind the same "× N" badge.
+const LOOP_MIN_REPEATS = 3;
+const LOOP_MIN_HIDDEN = 10; // folded words; "no no no" is speech, thirty "check out this page" not
+
+function wordLoop(ws) {
+  // `ws` holds per word its folded text and whether it is doubtful. The loop that hides the
+  // most words, as {start, len, repeats}, or null: only doubtful words may loop away.
+  const t = ws.map(w => w.text);
+  let best = null;
+  for (let len = 1; len <= 8; len++) {
+    for (let i = 0; i + 2 * len <= t.length; i++) {
+      let end = i;
+      while (end + len <= t.length
+             && t.slice(end, end + len).every((w, k) => w === t[i + k] && ws[end + k].doubtful)) {
+        end += len;
+      }
+      const repeats = (end - i) / len;
+      const hidden = (repeats - 1) * len;
+      if (repeats >= LOOP_MIN_REPEATS && hidden >= LOOP_MIN_HIDDEN
+          && (!best || hidden > (best.repeats - 1) * best.len)) {
+        best = { start: i, len, repeats };
+      }
+    }
+  }
+  return best;
 }
 
 function pickRun(runs, direction, pos) {
@@ -150,6 +189,6 @@ function startedRecording(prevState, newState) {
 // In the browser these are plain globals shared with app.js; in Node the tests import them.
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { clock, minutes, speedLabel, gigabytes, dayOf, groupOf, shortWhen,
-                     fold, forms, findMatches, doubtfulRuns, repeatedRuns, pickRun,
-                     playbackGain, startedRecording };
+                     fold, forms, findMatches, doubtfulRuns, repeatUnit, repeatedRuns,
+                     wordLoop, pickRun, playbackGain, startedRecording };
 }

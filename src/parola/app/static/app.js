@@ -604,11 +604,15 @@ async function render(data, after) {
   const body = el("div", { class: "transcript" });
   // Identical doubtful lines in a row ("Thank you." written over a noisy stretch, decision
   // 0040): the transcript keeps them all, the view shows the first with "× N" and folds the
-  // rest until the badge is clicked.
+  // rest until the badge is clicked. Lines are compared by their repeating unit, so "Thank
+  // you. Thank you." folds with "Thank you.", and the speaker is ignored: on noise the
+  // diarizer assigns voices as arbitrarily as Whisper writes the words. One doubtful word
+  // is enough (both backends often hallucinate the same "you"); a line with every word
+  // confirmed never folds.
   const folded = repeatedRuns(rec.segments.map(s => ({
-    text: (s.text || "").trim(),
-    doubtful: s.words.length > 0 && s.words.every(w => w.doubtful),
-    key: `${s.channel || "mic"}|${s.speaker || ""}`,
+    text: repeatUnit(s.words.map(w => fold(w.text))),
+    doubtful: s.words.some(w => w.doubtful),
+    key: s.channel || "mic",
   })));
   const leads = new Map(folded.map(f => [f.start, f]));
   const inFold = new Map(); // member index (after the first) -> the run it belongs to
@@ -634,11 +638,29 @@ async function render(data, after) {
       words.push(word);
       text.append(span, k < list.length - 1 ? " " : "");
     });
+    // One line looping a phrase ("and check out this page and check out this page and..."):
+    // the repeats after the first fold in place, behind the same kind of badge.
+    const loop = wordLoop(list.map(w => ({ text: fold(w.text || ""), doubtful: !!w.doubtful })));
+    if (loop) {
+      const from = loop.start + loop.len, to = loop.start + loop.repeats * loop.len;
+      const spans = [...text.querySelectorAll(".w")];
+      for (let k = from; k < to; k++) spans[k].classList.add("fold-w");
+      const badge = el("button", { class: "fold-count", "aria-expanded": "false",
+        title: `Frase dubbia ripetuta ${loop.repeats} volte di seguito (spesso rumore ` +
+               "trascritto male): clic per mostrare o nascondere le ripetizioni" },
+        `× ${loop.repeats}`);
+      badge.addEventListener("click", () => {
+        const open = badge.getAttribute("aria-expanded") === "true";
+        for (let k = from; k < to; k++) spans[k].classList.toggle("fold-w", open);
+        badge.setAttribute("aria-expanded", String(!open));
+      });
+      spans[from - 1].after(" ", badge);
+    }
     const lead = leads.get(si);
     if (lead) {
       const n = lead.end - lead.start;
       const badge = el("button", { class: "fold-count", "aria-expanded": "false",
-        title: `Riga identica e dubbia ${n} volte di seguito (spesso rumore trascritto ` +
+        title: `Riga dubbia ripetuta ${n} volte di seguito (spesso rumore trascritto ` +
                "male): clic per mostrare o nascondere le altre" }, `× ${n}`);
       badge.addEventListener("click", () => {
         const open = badge.getAttribute("aria-expanded") === "true";
