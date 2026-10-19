@@ -232,3 +232,6 @@ blocked by a pre-commit hook. Never commit recordings or personal data.
 ## License
 
 Code: [MIT](LICENSE). The license of fine-tuned model weights will depend on the training data.
+
+The P.A.R.O.L.A. name and logo identify this project and are not covered by the MIT
+license: forks and derived works may not present themselves under them.
