@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSApp.windows.first {
             !($0 is NSPanel) && ($0.identifier?.rawValue.hasPrefix("main") ?? false)
         }
+        // Activation first: called from the floater the app is inactive, and without being
+        // active makeKeyAndOrderFront raises the window only among our own.
+        NSApp.activate(ignoringOtherApps: true)
         if let window, window.isMiniaturized {
             window.deminiaturize(nil)
             window.makeKeyAndOrderFront(nil)
@@ -41,7 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             openMain?()
         }
-        NSApp.activate(ignoringOtherApps: true)
+        // If the system declined to activate us, at least the window comes visually forward.
+        window?.orderFrontRegardless()
     }
 }
 
