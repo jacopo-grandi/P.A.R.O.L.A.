@@ -19,6 +19,10 @@ The title is built like a title, not a tag list: the two best phrases joined by 
 two phrases with the same head coordinated ("peperoni rossi" + "peperoni gialli" -> "Peperoni
 rossi e gialli").
 
+A capital letter counts as a name only away from the start of a sentence, where the sentence
+forces it. Whisper hallucinates "Thank you." on quiet stretches, one sentence per stretch, so
+the capitalized "Thank" of a long call used to pass for a name and reach the title.
+
 A doubtful word enters a phrase only if it was transcribed the same way at least
 ``DOUBTFUL_REPEATS`` times: once, it may be a mistake; ten identical "baking soda" are the subject
 of the call. Nothing is added to the transcript; the title is only a suggestion the person can
@@ -189,13 +193,17 @@ def _content(run: list[tuple[str, str]]) -> list[str]:
     return [w for w, _ in run if w not in CONNECTORS]
 
 
-def _runs(t: Transcript) -> tuple[list[list[tuple[str, str]]], dict[str, Counter], list[bool]]:
+def _runs(
+    t: Transcript,
+) -> tuple[list[list[tuple[str, str]]], dict[str, Counter], list[bool], dict[str, Counter]]:
     """Runs of (lowercase word, spelling as said) between breaks, the languages each word was said
-    in, and for each run whether a determiner comes right before it. A connector stays in a run
-    only between two content words."""
+    in, for each run whether a determiner comes right before it, and the spellings of each word
+    away from the start of a sentence. A connector stays in a run only between two content
+    words."""
     runs: list[list[tuple[str, str]]] = []
     starts: list[bool] = []
     langs: dict[str, Counter] = {}
+    free: dict[str, Counter] = {}  # spellings where the sentence does not force a capital
     doubtful = Counter(_key(w.text) for s in t.segments for w in s.words if w.doubtful)
 
     def close(run: list[tuple[str, str]], det: bool) -> None:
@@ -212,6 +220,7 @@ def _runs(t: Transcript) -> tuple[list[list[tuple[str, str]]], dict[str, Counter
         for w in seg.words:
             raw = w.text.strip()
             surface = raw.strip(_EDGE)
+            initial = not before  # first word of a sentence: its capital is forced
             after_det = before in DETERMINERS
             # "l'impatto" -> "impatto"; "dell'impatto" may continue a phrase as "dell' impatto".
             if m := _ELIDED.match(surface):
@@ -237,6 +246,8 @@ def _runs(t: Transcript) -> tuple[list[list[tuple[str, str]]], dict[str, Counter
                 run += [*pending, (word, surface)]
                 pending = []
                 langs.setdefault(word, Counter())[lang] += 1
+                if not initial:
+                    free.setdefault(word, Counter())[surface] += 1
             elif run and word in CONNECTORS and not pending and not ends:
                 pending = [(word, surface)]
             else:
@@ -248,24 +259,26 @@ def _runs(t: Transcript) -> tuple[list[list[tuple[str, str]]], dict[str, Counter
             if ends:
                 before = ""
         close(run, det)
-    return runs, langs, starts
+    return runs, langs, starts, free
 
 
-def _spell(spellings: Counter) -> str:
+def _spell(spellings: Counter, free: Counter) -> str:
     """The usual spelling: capitals for an acronym written so at least once (DOP), a capital
-    initial for a name always written so (Giulia), lowercase otherwise."""
+    initial for a name always written so where the sentence does not force it (Giulia), lowercase
+    otherwise. A capital at the start of a sentence says nothing: a hallucinated "Thank you." on
+    a quiet stretch is a sentence, not a name."""
     word, _ = spellings.most_common(1)[0]
     if any(s.isupper() and 2 <= len(s) <= 6 for s in spellings):
         return next(s for s in spellings if s.isupper())
-    if all(s[:1].isupper() for s in spellings):
+    if free and all(s[:1].isupper() for s in free):
         return word[:1].upper() + word[1:].lower()
     return word.lower()
 
 
-def _show(words: tuple[str, ...], spellings: dict[str, Counter]) -> str:
+def _show(words: tuple[str, ...], spellings: dict[str, Counter], free: dict[str, Counter]) -> str:
     out = ""
     for w in words:
-        text = w if w in CONNECTORS else _spell(spellings[w])
+        text = w if w in CONNECTORS else _spell(spellings[w], free.get(w, Counter()))
         out += text if out.endswith("'") or not out else " " + text
     return out
 
@@ -286,7 +299,7 @@ def _inner_phrases(words: list[str]) -> list[tuple[int, list[str]]]:
 
 def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
     """The call's key phrases, best first."""
-    runs, langs, starts = _runs(t)
+    runs, langs, starts, free = _runs(t)
     spellings: dict[str, Counter] = {}
     for run in runs:
         for w, surface in run:
@@ -325,7 +338,7 @@ def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
         go without articles: "Italy", "Portogallo")."""
         if nominal[key] >= NOMINAL_SHARE * counts[key]:
             return True
-        shown = _show(seen[key].most_common(1)[0][0], spellings)
+        shown = _show(seen[key].most_common(1)[0][0], spellings, free)
         return any(w[:1].isupper() for w in shown.split() if w not in CONNECTORS)
 
     counts = Counter({k: n for k, n in counts.items() if is_topic(k)})
@@ -353,7 +366,7 @@ def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
         if len(chosen) == limit:
             break
     return [
-        Phrase(_show(seen[key].most_common(1)[0][0], spellings), n, float(score(key, n)))
+        Phrase(_show(seen[key].most_common(1)[0][0], spellings, free), n, float(score(key, n)))
         for key, n in chosen
     ]
 

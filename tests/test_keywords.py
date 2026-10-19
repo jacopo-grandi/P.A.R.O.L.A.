@@ -157,3 +157,26 @@ def test_names_count_without_an_article():
 def test_very_frequent_words_break_phrases():
     t = call("the ripest tomato because.", "the ripest tomato because.")
     assert texts(t) == ["ripest tomato"]
+
+
+def test_a_hallucinated_thank_you_does_not_name_a_call():
+    # Whisper writes "Thank you." on quiet stretches, one sentence per stretch: the capital
+    # on "Thank" is forced by the sentence, not the mark of a name.
+    lines = [*["the ripest tomato."] * 3, *["the number of seeds."] * 2,
+             *["Thank you."] * 10, *["Thanks for watching."] * 4, FILLER]  # fmt: skip
+    t = call(*lines, lang="en")
+    words = {w.lower() for p in texts(t) for w in p.split()}
+    assert not {"thank", "thanks", "watching"} & words
+    assert suggest_title(t) == "Ripest tomato and number of seeds"
+
+
+def test_a_capitalized_word_at_the_start_of_a_sentence_is_not_a_name():
+    # "Concime" opens every sentence it is in: no article and no free capital, not a topic.
+    t = call("Concime dappertutto.", "Concime dappertutto.", "il basilico.", "il basilico.")
+    assert "concime" not in " ".join(texts(t)).lower()
+
+
+def test_a_name_at_the_start_of_a_sentence_keeps_its_capital():
+    # One "Giulia" away from the start of a sentence is enough to show it is a name.
+    t = call("Giulia pota.", "la lavanda di Giulia.", "la lavanda.")
+    assert "Giulia" in " ".join(texts(t))
