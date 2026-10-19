@@ -1,13 +1,14 @@
 <h1 align="center"><img src="docs/assets/parola.png" alt="P.A.R.O.L.A." width="720"></h1>
 <p align="center"><b>P</b>arlato <b>A</b>scoltato, <b>R</b>iconosciuto e <b>O</b>rganizzato in <b>L</b>ocale, <b>A</b>lla lettera</p>
 
-Verbatim transcription of audio and calls, **100% local** on Apple Silicon Macs, for Italian and
-English (including both mixed in the same sentence).
+Word-for-word transcription of audio and calls, **100% local** on Apple Silicon Macs, for
+Italian and English (including both mixed in the same sentence).
 
-"Verbatim" means hesitations, repetitions, truncated words and false starts are kept. A clean
-layer will be derived from the verbatim one, never the other way around. Measured honestly:
-the default engine favours fidelity and still drops most fillers on its own; the doubtful-word
-review is how the missing speech comes back ([the numbers](#for-engineers)).
+Word for word: what was said, as it was said. No summaries, no AI meeting notes, no rephrasing —
+grammar mistakes stay as spoken, and every word traces back to its moment in the audio. Words
+the model may have got wrong are marked for review, so the transcript can be made exact
+([the numbers](#for-engineers)). A clean layer will be derived from the faithful one, never the
+other way around.
 
 How it is measured, which models it uses and why: [`METHODOLOGY.md`](METHODOLOGY.md).
 
@@ -209,10 +210,10 @@ intervals in [`METHODOLOGY.md`](METHODOLOGY.md)):
 | Parakeet TDT 0.6B v3 | 16.7 | 10.1 | 315 |
 
 The honest gap is in that last column: the engine that is most faithful in Italian also drops
-nearly every filler, so today the full verbatim comes from the doubtful-word review, not from
-the raw model. The open next step is a LoRA for Italian verbatim — and the training data is
-the one corpus that does not exist publicly: the app's own corrected calls, collected through
-normal use.
+nearly every filler, so today "word for word" means no rewording — not full verbatim, which
+comes from the doubtful-word review where it matters. The open next step is a LoRA for Italian
+verbatim, trained on calls recorded with consent and annotated verbatim by hand
+([`docs/annotation.md`](docs/annotation.md)) — a corpus that does not exist publicly.
 
 ## Development
 

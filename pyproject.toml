@@ -1,7 +1,7 @@
 [project]
 name = "parola"
 version = "0.1.0"
-description = "P.A.R.O.L.A.: local, verbatim transcription of Italian/English audio and calls on Apple Silicon."
+description = "P.A.R.O.L.A.: local, word-for-word transcription of Italian/English audio and calls on Apple Silicon."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
