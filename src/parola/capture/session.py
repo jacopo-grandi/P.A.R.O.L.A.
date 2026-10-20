@@ -162,6 +162,9 @@ class RecordingSession:
                                  preview=preview)  # fmt: skip
             self.state, self.message = "done", ""
         except Exception as e:  # shown in the UI; the audio files stay on disk
+            # Before the state: a status read between the two assignments must never pair
+            # "error" with leftover provisional text (it flaked exactly so on a slow CI runner).
+            self._preview = None
             self.state, self.message = "error", f"transcription failed: {e}"
         finally:
             self._preview = None
