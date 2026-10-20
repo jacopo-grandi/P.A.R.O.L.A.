@@ -7,6 +7,9 @@ candidate phrases at words that cannot belong to a topic:
   numbers; the fillers of docs/conventions.md and the usual discourse markers;
 - the most frequent words of the language (Zipf frequency 6 or more, over one in a thousand
   words: "cosa", "think", "because"), the frequency-based stop list RAKE itself suggests;
+- in the language a word was said in, a lower bar (Zipf 5.4): the hedges of meeting speech
+  ("kind", "things", "look"; "lavoro", "momento") sit between 5.4 and 6 in written frequency
+  but are said constantly, so their TF beats any real topic;
 - adverbs in -mente, punctuation, and doubtful words.
 
 A phrase has one to three content words and may hold "di"/"of" ("raccolta delle olive", "number
@@ -49,6 +52,11 @@ DOUBTFUL_REPEATS = 3
 # Zipf 6 = once per thousand words: the top of the language, where only function words and
 # all-purpose words live.
 FREQUENT_ZIPF = 6.0
+# In the language of the segment itself the bar is lower: wordfreq counts written text, and the
+# hedges of speech ("kind", "things", "look"; "lavoro", "momento") sit at Zipf 5.4-6 while being
+# said far more often than written. Below 5.4 the band is topic words ("data", "model",
+# "sicurezza"), which must stay.
+SPOKEN_ZIPF = 5.4
 
 
 def _words(text: str) -> list[str]:
@@ -155,7 +163,8 @@ def _is_stop(word: str, lang: str = "it") -> bool:
             or word in NUMBERS or _looks_like_adverb(word)
             # Either language: calls mix them, and "because" in an Italian sentence is still
             # a function word.
-            or max(_zipf(word, "it"), _zipf(word, "en")) >= FREQUENT_ZIPF)  # fmt: skip
+            or max(_zipf(word, "it"), _zipf(word, "en")) >= FREQUENT_ZIPF
+            or _zipf(word, lang) >= SPOKEN_ZIPF)  # fmt: skip
 
 
 @cache

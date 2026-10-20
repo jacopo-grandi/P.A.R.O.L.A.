@@ -139,8 +139,8 @@ def test_title_coordinates_phrases_with_the_same_head():
 
 
 def test_english_title_uses_and():
-    lines = [*["the ripest tomato."] * 3, *["the number of seeds."] * 2, FILLER]
-    assert suggest_title(call(*lines, lang="en")) == "Ripest tomato and number of seeds"
+    lines = [*["the ripest tomato."] * 3, *["the variety of seeds."] * 2, FILLER]
+    assert suggest_title(call(*lines, lang="en")) == "Ripest tomato and variety of seeds"
 
 
 def test_only_noun_phrases_name_a_call():
@@ -162,12 +162,31 @@ def test_very_frequent_words_break_phrases():
 def test_a_hallucinated_thank_you_does_not_name_a_call():
     # Whisper writes "Thank you." on quiet stretches, one sentence per stretch: the capital
     # on "Thank" is forced by the sentence, not the mark of a name.
-    lines = [*["the ripest tomato."] * 3, *["the number of seeds."] * 2,
+    lines = [*["the ripest tomato."] * 3, *["the variety of seeds."] * 2,
              *["Thank you."] * 10, *["Thanks for watching."] * 4, FILLER]  # fmt: skip
     t = call(*lines, lang="en")
     words = {w.lower() for p in texts(t) for w in p.split()}
     assert not {"thank", "thanks", "watching"} & words
-    assert suggest_title(t) == "Ripest tomato and number of seeds"
+    assert suggest_title(t) == "Ripest tomato and variety of seeds"
+
+
+def test_spoken_hedges_do_not_name_an_english_call():
+    # "kind", "things", "look": written frequency between Zipf 5.4 and 6, said constantly in
+    # meetings. Repeated far more often than the topic, they must still lose.
+    lines = [*["the kind of things, look."] * 10, *["the vulnerability tier."] * 3, FILLER]
+    t = call(*lines, lang="en")
+    words = {w.lower() for p in texts(t) for w in p.split()}
+    assert not {"kind", "things", "look"} & words
+    assert suggest_title(t) == "Vulnerability tier"
+
+
+def test_spoken_hedges_do_not_name_an_italian_call():
+    # "lavoro", "momento": the same band in Italian.
+    lines = [*["il lavoro, il momento."] * 10, *["il concime biologico."] * 3, FILLER]
+    t = call(*lines)
+    words = {w.lower() for p in texts(t) for w in p.split()}
+    assert not {"lavoro", "momento"} & words
+    assert suggest_title(t) == "Concime biologico"
 
 
 def test_a_capitalized_word_at_the_start_of_a_sentence_is_not_a_name():
