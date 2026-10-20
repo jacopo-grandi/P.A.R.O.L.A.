@@ -263,7 +263,8 @@ there is no "Io / Altri" split and no echo removal; the voices are told apart as
 A call gets a suggested title from its own words, without a language model: a RAKE-style
 extraction (Rose et al., 2010) with TF-IDF against the language. Every rule is general: lists of
 closed classes and frequency thresholds, nothing tuned on a particular call. The parameters were
-chosen by hand and are declared here; none was tuned on the six transcripts used to check them.
+chosen by hand and are declared here; none was tuned on the six transcripts used to check them,
+except the spoken-frequency bar, revised later with the measurement procedure of §5 (see there).
 
 ### 1. Candidate phrases
 
@@ -276,6 +277,7 @@ The text is cut into runs at every word that cannot belong to a topic:
 | Number words | *uno, due, … mille, primo*; *one, two, … first* |
 | Adverbs | Words ending in *-mente* (over 7 letters) or *-ly* (over 5 letters, so "Italy" stays) |
 | Very frequent words | Zipf ≥ 6 in Italian **or** English (more than one in a thousand words: *cosa, think, because*), the frequency-based stop list RAKE itself suggests; either language, because calls mix them |
+| Spoken hedges | Zipf ≥ 5.4 in the language of the segment itself. wordfreq counts written text, and the hedges of meeting speech (*kind, things, look*; *lavoro, momento*) sit at Zipf 5.4–6 while said constantly, so their term frequency beats any real topic. Topic words sit below the bar (*data* 5.34, *sicurezza* 5.30) |
 | Other | Punctuation, words with digits, words under 3 letters unless an acronym, and doubtful words |
 
 A doubtful word is kept only if it was transcribed the same way at least 3 times: once it may be
@@ -323,14 +325,19 @@ phrase said at least twice replaces a better one it contains ("pizza margherita"
 The rules were checked on six transcripts: the test set and the author's own trial
 recordings. Their titles are not reproduced, since the conversations are private; with
 invented calls, the rules give titles such as "Mulching naturale e semi antichi", "Ripest tomato and
-number of seeds" or "Peperoni rossi e gialli" (the examples in `tests/test_keywords.py`).
+variety of seeds" or "Peperoni rossi e gialli" (the examples in `tests/test_keywords.py`).
 
 ### 5. Measuring it on new calls
 
 Each call keeps the suggested title (`title_suggested`) apart from the one the person chose
 (`title`), and `parola titles` lists how many suggestions were kept and, for the others, the
 suggestion next to the chosen title. The rules stay frozen until there are enough new calls to
-judge them; so far 2 of 2 suggestions on new calls were kept. Word frequencies come from
+judge them. This procedure already forced one revision: on the first imported real meeting the
+top phrases were the hedges of meeting speech ("Kind and things") and the spoken-frequency bar
+above was added, chosen by comparing candidates on the whole title set
+([`results/2026-10-20-title-hedges.md`](results/2026-10-20-title-hedges.md)): it fixes the
+measured case, reproduces word for word the one title chosen by hand, and leaves the kept
+titles equal or better. Word frequencies come from
 [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (code Apache-2.0, data
 CC BY-SA 4.0).
 
