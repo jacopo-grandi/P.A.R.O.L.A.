@@ -464,6 +464,11 @@ final class MicCapture {
     private var inputID = AudioDeviceID(kAudioObjectUnknown)
     private var inputFormat: AVAudioFormat?
 
+    /// The microphone being recorded (the last one, if it changed: the changes are in events).
+    /// Its name diagnoses a silent mic channel: Meet records the mic the person chose in Meet,
+    /// this helper records the system default input, and they can be different devices.
+    var inputName: String { deviceName(inputID) }
+
     func start(url: URL) throws {
         let semaphore = DispatchSemaphore(value: 0)
         var granted = false
@@ -645,7 +650,8 @@ func finish() -> Never {
     ]
     if let t = mic.track {
         meta["mic"] = ["file": micURL.lastPathComponent, "sample_rate": t.format.sampleRate,
-                       "channels": t.format.channelCount, "seconds": t.seconds]
+                       "channels": t.format.channelCount, "seconds": t.seconds,
+                       "input_device": mic.inputName]
     }
     if let t = system.track {
         meta["system"] = ["file": systemURL.lastPathComponent, "sample_rate": t.format.sampleRate,

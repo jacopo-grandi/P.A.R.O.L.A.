@@ -1,3 +1,4 @@
+import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,6 +77,52 @@ def test_transcribe_recording_skips_silent_channel(tmp_path, capsys):
     assert [s.channel for s in t.segments] == ["mic"]
     assert txt_path.read_text().startswith("[00:00:00.000 - 00:00:01.000] Io: canale 1")
     assert not list(tmp_path.glob(".c.*"))  # temporary folders removed
+
+
+def _write_dead_mic(path: Path, seconds: int = 30, rate: int = 16000) -> None:
+    """Room rustle with one pop: passes the peak check, holds no speech (the 2026-10-23 mic)."""
+    import wave
+
+    import numpy as np
+
+    x = np.random.default_rng(0).normal(0, 30, rate * seconds).astype("<i2")  # ~-61 dBFS
+    x[rate : rate + rate // 5] = 8000  # a 0.2 s pop, peak well above SILENCE_PEAK
+    with wave.open(str(path), "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(rate)
+        f.writeframes(x.tobytes())
+
+
+@requires_ffmpeg
+def test_speech_share_separates_speech_from_rustle(tmp_path):
+    _write(tmp_path / "tone.wav", "sine=frequency=440:duration=5")
+    _write_dead_mic(tmp_path / "dead.wav")
+    assert recorder.speech_share(tmp_path / "tone.wav") == 1.0
+    assert recorder.speech_share(tmp_path / "dead.wav") < recorder.SPEECH_SHARE_MIN
+    assert recorder.peak(tmp_path / "dead.wav") > recorder.SILENCE_PEAK  # the pop fools peak()
+
+
+@requires_ffmpeg
+def test_a_channel_with_no_speech_is_skipped_and_said_on_the_call(tmp_path, capsys):
+    _write_dead_mic(tmp_path / "c.mic.wav")
+    _write(tmp_path / "c.system.wav", "sine=frequency=440:duration=30")
+    rec = recorder.Recording("c", tmp_path, {
+        "mic": {"seconds": 30.0, "input_device": "RØDE Unify Virtual"},
+        "system": {"seconds": 30.0},
+    })  # fmt: skip
+    backend = FakeBackend()
+    json_path, _ = recorder.transcribe_recording(rec, backend)
+    assert backend.calls == 1  # the dead mic never reaches Whisper: no hallucinated segments
+    err = capsys.readouterr().err
+    assert "almost no speech" in err and "RØDE Unify Virtual" in err
+    t = Transcript.load(json_path)
+    assert [s.channel for s in t.segments] == ["system"]
+    # The warning is persisted where the app reads it, with the device that was recorded.
+    cap = json.loads((tmp_path / "c.capture.json").read_text())
+    [w] = cap["warnings"]
+    assert (w["channel"], w["kind"], w["device"]) == ("mic", "no_speech", "RØDE Unify Virtual")
+    assert w["share"] < recorder.SPEECH_SHARE_MIN
 
 
 @requires_ffmpeg

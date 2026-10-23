@@ -98,6 +98,16 @@ def test_output_devices_are_listed_and_chosen(client, monkeypatch):
     assert client.get("/api/outputs").status_code == 503
 
 
+def test_channel_warnings_reach_the_summary(client, folder):
+    cap = json.loads((folder / "call.capture.json").read_text())
+    cap["warnings"] = [{"channel": "mic", "kind": "no_speech", "share": 0.009, "device": "X"}]
+    (folder / "call.capture.json").write_text(json.dumps(cap))
+    [row] = [r for r in client.get("/api/recordings").json() if r["name"] == "call"]
+    assert row["warnings"][0]["channel"] == "mic"
+    data = client.get("/api/recordings/call").json()
+    assert data["summary"]["warnings"][0]["device"] == "X"
+
+
 def test_get_recording(client):
     data = client.get("/api/recordings/call").json()
     assert data["audio"] == {"mic": "/audio/call/mic", "system": "/audio/call/system"}

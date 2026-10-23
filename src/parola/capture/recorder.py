@@ -38,6 +38,12 @@ CHANNELS = ("mic", "system", "mixed")
 # Peak below this (16-bit PCM) means digital silence: macOS returns zeros instead of an error
 # when the permission to record system audio is missing.
 SILENCE_PEAK = 8
+# A call channel with speech spends whole seconds at speaking level; one that recorded the wrong
+# device only rustles. On 2026-10-23 a dead mic (Meet used the headset mic, the default input
+# was another device) passed the peak check on a few pops and Whisper hallucinated on it: real
+# mics spent 16-89% of their seconds at or above -40 dBFS, dead ones at most 0.9%.
+SPEECH_FLOOR_DBFS = -40.0
+SPEECH_SHARE_MIN = 0.05
 PERMISSION_HINT = {
     "mic": "System Settings > Privacy & Security > Microphone",
     "system": "System Settings > Privacy & Security > Screen & System Audio Recording "
@@ -116,6 +122,23 @@ def peak(path: Path) -> int:
     return max((abs(x) for x in samples), default=0)
 
 
+def speech_share(path: Path, floor_dbfs: float = SPEECH_FLOOR_DBFS) -> float:
+    """Fraction of one-second windows whose RMS reaches ``floor_dbfs``."""
+    import numpy as np
+
+    with tempfile.TemporaryDirectory(prefix="parola-share-") as tmp:
+        wav = extract_audio(path, Path(tmp) / "a.wav")
+        with wave.open(str(wav), "rb") as f:
+            rate = f.getframerate()
+            x = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16).astype(np.float64)
+    seconds = len(x) // rate
+    if seconds == 0:
+        return 0.0
+    rms = np.sqrt((x[: seconds * rate].reshape(seconds, rate) ** 2).mean(axis=1))
+    db = 20 * np.log10(np.maximum(rms, 1.0) / 32768.0)
+    return float((db >= floor_dbfs).mean())
+
+
 def merge_channels(parts: dict[str, Transcript], audio_file: str, duration: float) -> Transcript:
     """One transcript with the segments of every channel, sorted by time."""
     segments: list[Segment] = []
@@ -138,6 +161,19 @@ def merge_channels(parts: dict[str, Transcript], audio_file: str, duration: floa
         ),
         segments=segments,
     )
+
+
+def save_warnings(rec: Recording, warnings: list[dict]) -> None:
+    """Into ``<name>.capture.json``, where the app reads them: a dead channel must be said on
+    the call itself, not only in the engine log."""
+    path = rec.out_dir / f"{rec.name}.capture.json"
+    try:
+        capture = json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        capture = {}
+    capture["warnings"] = warnings
+    path.write_text(json.dumps(capture, indent=2, sort_keys=True), encoding="utf-8")
+    rec.capture["warnings"] = warnings
 
 
 # "mixed" (an imported file) has no side to name: every voice is on the one track.
@@ -264,16 +300,30 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
     """
     parts: dict[str, Transcript] = {}
     with_speech = []
+    warnings: list[dict] = []
     for c in rec.channels():
         if rec.capture[c].get("seconds", 0) <= 0:
             continue
+        device = rec.capture[c].get("input_device") or rec.capture[c].get("output_device")
         if peak(rec.path(c)) < SILENCE_PEAK:
             # Transcribing silence makes Whisper invent text ("Thank you."): skip it.
             hint = PERMISSION_HINT.get(c, "the file's audio track")
             print(f"warning: the {c} channel is silent; if that is unexpected, check {hint}",
                   file=sys.stderr)  # fmt: skip
+            warnings.append({"channel": c, "kind": "silent", "device": device})
+            continue
+        if c in ("mic", "system") and (share := speech_share(rec.path(c))) < SPEECH_SHARE_MIN:
+            # A few pops pass the peak check; a channel with no stretch at speaking level
+            # recorded the wrong device, and Whisper would only hallucinate on it.
+            print(f"warning: the {c} channel has almost no speech "
+                  f"({share:.1%} of its seconds reach {SPEECH_FLOOR_DBFS:.0f} dBFS)"
+                  + (f"; it recorded {device!r}" if device else ""), file=sys.stderr)  # fmt: skip
+            warnings.append({"channel": c, "kind": "no_speech", "share": round(share, 3),
+                             "device": device})  # fmt: skip
             continue
         with_speech.append(c)
+    if warnings:
+        save_warnings(rec, warnings)
     if not with_speech:
         raise CaptureError("every channel is silent: nothing to transcribe")
     # Progress in units of work (WEIGHTS). Telling voices apart (decision 0026) runs on the

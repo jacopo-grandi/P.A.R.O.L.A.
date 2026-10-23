@@ -76,6 +76,9 @@ def summary(folder: Path, name: str, t: Transcript | None = None) -> dict:
         "checked": sum(w.checked for w in words),
         "edits": len(t.edits),
         "model": t.metadata.model,
+        # A channel that recorded silence or the wrong device (recorder.save_warnings): the
+        # call view says it, so a dead mic is not discovered weeks later.
+        "warnings": capture.get("warnings") or [],
     }
 
 

@@ -375,13 +375,24 @@ function amplify(channel) {
   if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
 }
 
+// The channels are parallel tracks on one clock (the capture pads them to the same length), so
+// listening plays them all in sync: the conversation is heard whole, whoever is speaking.
+// An excerpt (`until`, reviewing a doubtful run) plays its side alone, to hear those words clean.
 function play(word, until) {
   const p = players[word.channel];
   if (!p) return;
-  for (const [c, q] of Object.entries(players)) if (c !== word.channel) q.pause();
+  const t = Math.max(0, word.start - LEAD);
+  const solo = until !== undefined;
+  for (const [c, q] of Object.entries(players)) {
+    if (c === word.channel) continue;
+    if (solo) { q.pause(); continue; }
+    amplify(c);
+    q.currentTime = t;
+    q.play().catch(() => {});
+  }
   amplify(word.channel);
-  p.currentTime = Math.max(0, word.start - LEAD);
-  stopAt = until === undefined ? null : { channel: word.channel, t: until };
+  p.currentTime = t;
+  stopAt = solo ? { channel: word.channel, t: until } : null;
   lastChannel = word.channel;
   p.play().catch(() => {});
   target = word;
@@ -389,12 +400,19 @@ function play(word, until) {
 }
 
 function togglePlay() {
-  const p = playing();
-  if (p) { p.pause(); return; }
+  if (playing()) { stopAll(); return; }
   const w = current && words.find(w => w.el === current);
   const channel = w ? w.channel : lastChannel || Object.keys(players)[0];
   const q = players[channel];
-  if (q) { stopAt = null; lastChannel = channel; amplify(channel); q.play().catch(() => {}); }
+  if (!q) return;
+  stopAt = null;
+  lastChannel = channel;
+  const t = q.currentTime;
+  for (const [c, r] of Object.entries(players)) {
+    amplify(c);
+    if (c !== channel) r.currentTime = t;
+    r.play().catch(() => {});
+  }
 }
 
 function seek(seconds) {
@@ -429,14 +447,18 @@ function follow(channel) {
   const p = players[channel];
   const t = p.currentTime;
   if (stopAt && stopAt.channel === channel && t >= stopAt.t) {
-    p.pause();
+    stopAll();
     stopAt = null;
   }
-  if (channel === lastChannel) updateProgress(t);
+  if (channel !== lastChannel) return;  // every track shares the clock: one drives the page
+  updateProgress(t);
   // Playback starts LEAD seconds early: keep the chosen word highlighted until it is reached.
-  if (target && target.channel === channel && t < target.start) return;
+  if (target && t < target.start) return;
   target = null;
-  const w = words.find(w => w.channel === channel && w.start <= t && t < w.end);
+  // Whoever is speaking now, on any channel; both at once (an overlap): the side chosen last.
+  // A solo excerpt stays on its own side, the other words are not being played.
+  const at = words.filter(w => w.start <= t && t < w.end);
+  const w = at.find(w => w.channel === channel) || (stopAt ? null : at[0]);
   if (w && w.el !== current) {
     mark(w.el);
     if (!p.paused) keepInView(w.el);
@@ -481,8 +503,7 @@ function openEditor(seg, start, end, autoplay) {
   input.addEventListener("keydown", async e => {
     if (e.key === "Escape") {
       e.preventDefault();
-      const p = playing();
-      if (p) p.pause();
+      stopAll();
       closeEditor();
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -757,8 +778,19 @@ async function render(data, after) {
     iconButton("close", "Svuota la ricerca (Esc)", closeFind));
   view.find = el("div", { class: "findbar" }, view.findInput, view.findNav);
   view.findNav.hidden = true;
+  // A channel that recorded silence or the wrong device: said on the call itself, so a dead
+  // mic is discovered here and not weeks later (see recorder.save_warnings).
+  const warns = ((rec.summary || {}).warnings || []).map(w => {
+    const dev = w.device ? ` (ingresso: ${w.device})` : "";
+    const text = w.channel === "mic"
+      ? `Il microfono ha registrato quasi solo silenzio${dev}: la tua voce non è in questa call.`
+      : w.channel === "system"
+      ? `L'audio di sistema risulta muto: la voce degli altri non è in questa call.`
+      : `Il canale ${w.channel} risulta muto.`;
+    return el("p", { class: "call-warn", role: "alert" }, `⚠ ${text}`);
+  });
   const head = el("header", { class: "call-head" },
-    el("div", { class: "head-row" }, view.heading, view.find, actions));
+    el("div", { class: "head-row" }, view.heading, view.find, actions), ...warns);
 
   view.body = body;
   view.scroll = el("div", { class: "scroll" }, body);
@@ -1024,6 +1056,26 @@ function meter() {
   return { root: el("div", { class: "meter" }, fill), fill };
 }
 
+// Dead-mic watch while recording: one sample per poll tick in a rolling 3-minute window. The
+// badge comes on when the others' side has sound but the mic never reaches speaking level
+// (today's dead channel only rustled), and goes off as soon as the mic hears real speech.
+const MIC_WATCH = { windowS: 180, warmupS: 60, micFloor: -40, sysFloor: -35, minSys: 30, maxMic: 2 };
+let micWatch = [];
+
+function micLooksMute(st) {
+  if (st.state !== "recording") { micWatch = []; return false; }
+  const lv = st.levels || {};
+  if (st.paused || lv.mic === undefined || lv.system === undefined) return false;
+  // The poll ticks four times a second while recording: one sample a second is enough.
+  if (!micWatch.length || Date.now() - micWatch[micWatch.length - 1].t >= 900) {
+    micWatch.push({ t: Date.now(), mic: lv.mic >= MIC_WATCH.micFloor, sys: lv.system >= MIC_WATCH.sysFloor });
+  }
+  micWatch = micWatch.filter(s => s.t >= Date.now() - MIC_WATCH.windowS * 1000);
+  if (micWatch.length < MIC_WATCH.warmupS) return false;
+  return micWatch.filter(s => s.sys).length >= MIC_WATCH.minSys &&
+         micWatch.filter(s => s.mic).length <= MIC_WATCH.maxMic;
+}
+
 function buildLive(floating) {
   // The recording controls; built with this document but also moved into the floating window.
   const dot = el("span", { class: "rec-dot" });
@@ -1032,15 +1084,20 @@ function buildLive(floating) {
   const meters = el("div", { class: "meters", title: "Livelli: Io, Altri" },
     mic.root, system.root);
   const pause = el("button", { class: "icon-btn" });
+  const micWarn = el("span", { class: "mic-warn", hidden: true, role: "alert",
+                               title: "Il microfono non sta sentendo la tua voce: controlla " +
+                                      "l'ingresso in Impostazioni di Sistema > Suono" },
+    "mic muto?");
   const stop = iconButton("stop", "Ferma e trascrivi", () => recAction("stop"), "rec-stop");
   // In the native app the floating window is the app's own panel (phase 8, step 2).
   const pop = floating || window.parolaNative ? null
     : iconButton("popout", "Finestra mobile", () => openFloating(false));
   const root = el("div", { class: floating ? "rec-live pip-bar" : "rec-live" },
-    dot, time, meters, pause, pop, stop);
+    dot, time, meters, micWarn, pause, pop, stop);
   return {
     root,
-    update(st) {
+    update(st, micMute = false) {
+      micWarn.hidden = !micMute;
       dot.classList.toggle("blink", !st.paused);
       dot.style.opacity = st.paused ? "0.35" : "";
       time.textContent = clock(liveElapsed());
@@ -1121,7 +1178,8 @@ function renderRecorder() {
       $recorder.replaceChildren(el("div", { class: "rec-row" }, start, pick, lang), note || "");
     }
   }
-  if (mode === "recording") for (const v of liveViews) v.update(st);
+  const micMute = micLooksMute(st);  // one sample per poll, shared by sidebar and floater
+  if (mode === "recording") for (const v of liveViews) v.update(st, micMute);
 }
 
 const pendingView = {};
@@ -1213,12 +1271,13 @@ async function refreshShown(final) {
   const scrollY = view.scroll ? view.scroll.scrollTop : 0;
   await showRecording(name, data);
   if (view.scroll) view.scroll.scrollTop = scrollY;
-  const q = lastChannel && players[lastChannel];
-  if (q && at) {
-    q.addEventListener("loadedmetadata", () => {
-      q.currentTime = at;
-      if (wasPlaying) q.play().catch(() => {});
-    }, { once: true });
+  if (at) {
+    for (const r of Object.values(players)) {
+      r.addEventListener("loadedmetadata", () => {
+        r.currentTime = at;
+        if (wasPlaying) r.play().catch(() => {});
+      }, { once: true });
+    }
   }
 }
 
@@ -1520,7 +1579,7 @@ document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (!Object.keys(players).length) return;
   if (e.key === " ") { e.preventDefault(); togglePlay(); }
-  else if (e.key === "Escape") { const p = playing(); if (p) p.pause(); }
+  else if (e.key === "Escape") { if (playing()) stopAll(); }
   else if (e.key === "n" || e.key === "N") { e.preventDefault(); jump(1); }
   else if (e.key === "p" || e.key === "P") { e.preventDefault(); jump(-1); }
   else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
