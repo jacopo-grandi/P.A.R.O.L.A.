@@ -49,6 +49,9 @@ const ICONS = {
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
   people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/>' +
           '<circle cx="17" cy="9" r="2.4"/><path d="M15.8 14.2c2.4.1 4 1.7 4.7 4.3"/>',
+  gear: '<circle cx="12" cy="12" r="3"/>' +
+        '<path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1' +
+        'M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/>',
 };
 
 function icon(name, size = 16) {
@@ -1056,6 +1059,34 @@ function buildLive(floating) {
   };
 }
 
+// The settings gear: for now only where to listen. Playback is plain <audio> in the WebView,
+// which follows the Mac's default output, so choosing an output switches the system default
+// (what Control Center's switcher does) — honest in the menu title.
+async function openSettings(anchor) {
+  let rows;
+  try {
+    rows = await getJSON("/api/outputs");
+  } catch (e) {
+    toast("Dispositivi audio non disponibili");
+    return;
+  }
+  const items = rows.map(r =>
+    el("button", { role: "menuitemradio", "aria-checked": String(r.current),
+                   class: r.current ? "checked" : "",
+                   onclick: () => chooseOutput(r) },
+      `${r.current ? "✓ " : ""}${r.name}`));
+  popMenu(anchor, el("div", { class: "menu-title" }, "Uscita audio del Mac"), ...items);
+}
+
+async function chooseOutput(device) {
+  try {
+    await postJSON("/api/outputs", { uid: device.uid });
+    toast(`Audio su ${device.name}`);
+  } catch (e) {
+    toast(`Uscita non cambiata: ${e.message}`);
+  }
+}
+
 function renderRecorder() {
   const st = recState;
   // While a file uploads or a call is transcribed the controls stay, disabled: the progress is
@@ -1087,7 +1118,9 @@ function renderRecorder() {
         ? el("p", { class: "rec-note" }, "Trascritta: ",
              el("a", { href: `#/rec/${enc(st.name)}` }, "apri"))
         : st.state === "error" ? el("p", { class: "rec-note err" }, st.message) : null;
-      $recorder.replaceChildren(el("div", { class: "rec-row" }, start, pick, lang), note || "");
+      const row = el("div", { class: "rec-row" }, start, pick, lang);
+      row.append(iconButton("gear", "Impostazioni", () => openSettings(row), "rec-gear"));
+      $recorder.replaceChildren(row, note || "");
     }
   }
   if (mode === "recording") for (const v of liveViews) v.update(st);

@@ -175,6 +175,7 @@ func parseOptions() -> Options {
         case "--levels": o.levels = true
         case "-h", "--help":
             print("usage: parola-capture --out-dir DIR --name NAME [--duration S] [--no-mic] [--no-system] [--levels]")
+            print("       parola-capture --outputs | --set-output UID")
             exit(0)
         default: fail("unknown argument \(arg)")
         }
@@ -559,8 +560,42 @@ final class MicCapture {
     }
 }
 
+// MARK: - Output devices
+
+/// `--outputs` lists the Mac's output devices as JSON, `--set-output UID` makes one the default
+/// output (what Control Center's switcher does): the settings gear in the app. It lives in this
+/// helper because the rest of the CoreAudio device code is already here.
+func runDeviceCommand() {
+    let args = CommandLine.arguments
+    guard args.count >= 2, ["--outputs", "--set-output"].contains(args[1]) else { return }
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    let system = AudioObjectID(kAudioObjectSystemObject)
+    if args[1] == "--outputs" {
+        let current = tryProperty(system, kAudioHardwarePropertyDefaultOutputDevice,
+                                  AudioDeviceID(kAudioObjectUnknown)) ?? AudioDeviceID(kAudioObjectUnknown)
+        let rows: [[String: Any]] = allDevices()
+            .filter { hasOutput($0) && !deviceName($0).isEmpty && !deviceUID($0).isEmpty }
+            .map { ["uid": deviceUID($0), "name": deviceName($0), "kind": deviceKind($0),
+                    "current": $0 == current] }
+        let data = try! JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])
+        print(String(data: data, encoding: .utf8)!)
+        exit(0)
+    }
+    guard args.count >= 3 else { fail("--set-output needs a device UID") }
+    guard var id = allDevices().first(where: { hasOutput($0) && deviceUID($0) == args[2] }) else {
+        fail("no output device with UID \(args[2])")
+    }
+    check(AudioObjectSetPropertyData(system, &address, 0, nil,
+                                     UInt32(MemoryLayout<AudioDeviceID>.size), &id),
+          "setting the default output")
+    exit(0)
+}
+
 // MARK: - Main
 
+runDeviceCommand()
 let options = parseOptions()
 try? FileManager.default.createDirectory(at: options.outDir, withIntermediateDirectories: true)
 let micURL = options.outDir.appendingPathComponent("\(options.name).mic.wav")

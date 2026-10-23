@@ -27,7 +27,7 @@ from parola import editing
 from parola.audio import channel_file
 from parola.audio.loudness import channel_loudness
 from parola.audio.playback import forget, playable
-from parola.capture.recorder import CHANNELS, LABELS, marked_text, to_dialogue
+from parola.capture.recorder import CHANNELS, LABELS, CaptureError, marked_text, to_dialogue
 from parola.capture.session import RecordingSession, SessionError
 from parola.models import ModelDownload
 from parola.schema import Transcript, format_timestamp
@@ -124,6 +124,10 @@ class Rename(BaseModel):
     title: str
 
 
+class OutputChoice(BaseModel):
+    uid: str
+
+
 class SpeakerChange(BaseModel):
     segment: int
     speaker: str | None = None  # an existing voice id, "new" for a new voice, None for none
@@ -210,6 +214,28 @@ def create_app(folder: Path, session: RecordingSession | None = None,
     def record_status() -> dict:
         # The models' state too: the menu bar of the native app reads only this.
         return {**session.status(), "models": models.status()["state"]}
+
+    @app.get("/api/outputs")
+    def audio_outputs() -> list[dict]:
+        """The Mac's output devices, for the settings gear: {uid, name, kind, current} rows."""
+        from parola.capture import devices
+
+        try:
+            return devices.outputs()
+        except CaptureError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+
+    @app.post("/api/outputs")
+    def choose_output(req: OutputChoice) -> list[dict]:
+        """Make ``uid`` the Mac's default output (what Control Center's switcher does): the
+        playback in the WebView follows it, WebKit has no per-element ``setSinkId``."""
+        from parola.capture import devices
+
+        try:
+            devices.set_output(req.uid)
+        except CaptureError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return devices.outputs()
 
     @app.post("/api/record/start")
     def record_start(req: RecordRequest) -> dict:

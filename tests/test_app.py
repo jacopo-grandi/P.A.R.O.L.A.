@@ -68,6 +68,36 @@ def test_a_corrupt_transcript_does_not_hide_the_other_calls(client, folder):
     assert [r["name"] for r in hits] == ["call"]
 
 
+def test_output_devices_are_listed_and_chosen(client, monkeypatch):
+    from parola.capture import devices
+    from parola.capture.recorder import CaptureError
+
+    rows = [{"uid": "spk", "name": "Altoparlanti", "kind": "Built-in, 48000 Hz", "current": True},
+            {"uid": "cuffie", "name": "Cuffie", "kind": "Built-in, 48000 Hz",
+             "current": False}]  # fmt: skip
+    chosen = []
+
+    def set_output(uid):
+        if uid not in {r["uid"] for r in rows}:
+            raise CaptureError(f"no output device with UID {uid}")
+        chosen.append(uid)
+        for r in rows:
+            r["current"] = r["uid"] == uid
+
+    monkeypatch.setattr(devices, "outputs", lambda: rows)
+    monkeypatch.setattr(devices, "set_output", set_output)
+    assert client.get("/api/outputs").json() == rows
+    out = client.post("/api/outputs", json={"uid": "cuffie"}).json()
+    assert chosen == ["cuffie"] and [r["uid"] for r in out if r["current"]] == ["cuffie"]
+    assert client.post("/api/outputs", json={"uid": "boh"}).status_code == 400
+
+    def unavailable():
+        raise CaptureError("swiftc not found")
+
+    monkeypatch.setattr(devices, "outputs", unavailable)
+    assert client.get("/api/outputs").status_code == 503
+
+
 def test_get_recording(client):
     data = client.get("/api/recordings/call").json()
     assert data["audio"] == {"mic": "/audio/call/mic", "system": "/audio/call/system"}
