@@ -49,9 +49,9 @@ const ICONS = {
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
   people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/>' +
           '<circle cx="17" cy="9" r="2.4"/><path d="M15.8 14.2c2.4.1 4 1.7 4.7 4.3"/>',
-  gear: '<circle cx="12" cy="12" r="3"/>' +
-        '<path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1' +
-        'M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/>',
+  gear: '<circle cx="12" cy="12" r="5.2"/><circle cx="12" cy="12" r="1.7"/>' +
+        '<path d="M17.2 12h2.2M12 17.2v2.2M6.8 12H4.6M12 6.8V4.6M15.68 15.68l1.56 1.56' +
+        'M8.32 15.68l-1.56 1.56M8.32 8.32L6.76 6.76M15.68 8.32l1.56-1.56"/>',
 };
 
 function icon(name, size = 16) {
@@ -1118,9 +1118,7 @@ function renderRecorder() {
         ? el("p", { class: "rec-note" }, "Trascritta: ",
              el("a", { href: `#/rec/${enc(st.name)}` }, "apri"))
         : st.state === "error" ? el("p", { class: "rec-note err" }, st.message) : null;
-      const row = el("div", { class: "rec-row" }, start, pick, lang);
-      row.append(iconButton("gear", "Impostazioni", () => openSettings(row), "rec-gear"));
-      $recorder.replaceChildren(row, note || "");
+      $recorder.replaceChildren(el("div", { class: "rec-row" }, start, pick, lang), note || "");
     }
   }
   if (mode === "recording") for (const v of liveViews) v.update(st);
@@ -1530,6 +1528,10 @@ document.addEventListener("keydown", e => {
     if (p) p.currentTime = Math.max(0, p.currentTime + (e.key === "ArrowRight" ? 5 : -5));
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
 });
+
+// The settings gear, beside the logo: always there, even while recording replaces the row.
+const $sideTop = document.querySelector(".side-top");
+$sideTop.append(iconButton("gear", "Impostazioni", () => openSettings($sideTop), "side-gear"));
 
 window.addEventListener("hashchange", route);
 refreshCalls().catch(() => {}).then(route);

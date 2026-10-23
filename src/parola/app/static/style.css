@@ -53,9 +53,12 @@ svg { display: block; }
   width: var(--side-w); flex: none; height: 100vh; display: flex; flex-direction: column;
   background: var(--side); border-right: 1px solid var(--line);
 }
-.side-top { padding: 16px 16px 10px; }
-.brand { display: block; width: max-content; border-radius: 4px; }
-.brand img { display: block; width: 200px; height: auto; }
+.side-top { padding: 16px 16px 10px; display: flex; align-items: center; gap: 6px;
+            position: relative; }
+.brand { display: block; min-width: 0; border-radius: 4px; }
+.brand img { display: block; width: 200px; max-width: 100%; height: auto; }
+.side-top .side-gear { margin-left: auto; }
+.side-top .menu { top: 46px; right: 12px; }
 .search { padding: 8px 12px; }
 .search input {
   width: 100%; padding: 6px 10px; border-radius: var(--radius); border: 1px solid transparent;
@@ -110,9 +113,7 @@ a.pending-call[href]:hover, a.pending-call.active { box-shadow: inset 0 0 0 1px 
 /* ------------------------------------------------------------------ recorder */
 
 .recorder { padding: 0 12px; }
-.rec-row { display: flex; gap: 6px; position: relative; }
-.rec-row .rec-gear { flex: none; align-self: center; }
-.rec-row .menu { top: 36px; }
+.rec-row { display: flex; gap: 6px; flex-wrap: wrap; }  /* narrow sidebar: Auto drops a line */
 .rec-row .lang { flex: none; border: 0; border-radius: var(--radius); padding: 0 6px;
                  background: var(--raise); color: var(--fg-2); font-size: var(--text-caption); }
 .rec-start {
