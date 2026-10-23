@@ -49,6 +49,25 @@ def test_list_recordings(client):
     assert rec["channels"] == ["mic", "system"] and rec["started_at"] == "2026-10-16T09:00:00Z"
 
 
+def test_a_corrupt_transcript_does_not_hide_the_other_calls(client, folder):
+    # Out-of-order segments (as a 2026-10-23 pipeline bug wrote them): the file fails
+    # validation, but the call must stay listed and the others must stay visible.
+    broken = json.loads((folder / "call.json").read_text())
+    broken["segments"].reverse()
+    (folder / "rotta.json").write_text(json.dumps(broken))
+    (folder / "rotta.mic.wav").write_bytes(b"RIFF" + b"\0" * 1000)
+    rows = client.get("/api/recordings").json()
+    assert [r["name"] for r in rows] == ["rotta", "call"]  # newest (file mtime) first
+    rotta = rows[0]
+    assert "sorted" in rotta["error"] and rotta["segments"] == 0
+    # The raw json still opens: segments readable, audio playable, summary degraded.
+    data = client.get("/api/recordings/rotta").json()
+    assert len(data["segments"]) == 2 and data["summary"]["error"]
+    # Search skips it instead of failing.
+    hits = client.get("/api/search", params={"q": "buongiorno"}).json()
+    assert [r["name"] for r in hits] == ["call"]
+
+
 def test_get_recording(client):
     data = client.get("/api/recordings/call").json()
     assert data["audio"] == {"mic": "/audio/call/mic", "system": "/audio/call/system"}

@@ -39,6 +39,22 @@ def test_a_word_between_turns_takes_the_nearest():
     assert [s.speaker for s in t.segments if s.channel == "system"] == ["system:1", "system:2"]
 
 
+def test_split_segments_stay_sorted_with_the_other_channel():
+    # A mic segment inside the span of the split system segment (a real call, 2026-10-23):
+    # the pieces of the split must not push it out of start order, or the transcript
+    # fails validation on the next load and the call disappears from the app.
+    t = call()
+    mic = Segment(start=0.5, end=0.9, text="ok", channel="mic",
+                  words=[Word(text="ok", start=0.5, end=0.8)])  # fmt: skip
+    t = t.model_copy(update={"segments": [t.segments[0], mic]})
+    t = assign(t, "system", [(0.0, 1.3, 0), (1.3, 3.0, 1)])
+    starts = [s.start for s in t.segments]
+    assert starts == sorted(starts)
+    assert [(s.channel, s.start) for s in t.segments] == [
+        ("system", 0), ("mic", 0.5), ("system", 1.4)]  # fmt: skip
+    Transcript.model_validate(t.model_dump())  # the saved file must load again
+
+
 def test_no_turns_leaves_the_call_as_it_was():
     assert assign(call(), "system", []).segments == call().segments
 

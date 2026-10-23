@@ -9,9 +9,11 @@ compressed, decision 0024) and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -19,7 +21,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from parola import editing
 from parola.audio import channel_file
@@ -75,6 +77,40 @@ def summary(folder: Path, name: str, t: Transcript | None = None) -> dict:
         "edits": len(t.edits),
         "model": t.metadata.model,
     }
+
+
+def summary_or_broken(folder: Path, name: str) -> dict:
+    """``summary``, or a degraded row when the transcript does not load: the call stays in the
+    list (its audio is still on disk) instead of taking every other call down with a 500."""
+    try:
+        return summary(folder, name)
+    except Exception as e:
+        print(f"warning: {name}.json does not load ({e}); listed without its transcript",
+              file=sys.stderr)  # fmt: skip
+        capture = {}
+        capture_path = folder / f"{name}.capture.json"
+        if capture_path.exists():
+            with contextlib.suppress(Exception):
+                capture = json.loads(capture_path.read_text())
+        json_path = folder / f"{name}.json"
+        mtime = datetime.fromtimestamp(json_path.stat().st_mtime, tz=UTC) if json_path.exists() \
+            else datetime.now(UTC)  # fmt: skip
+        return {
+            "name": name,
+            "title": Path(capture["source"]).stem if capture.get("source") else name,
+            "source": capture.get("source"),
+            "started_at": capture.get("started_at") or mtime.isoformat(),
+            "duration": capture.get("elapsed_seconds") or 0.0,
+            "channels": [],
+            "segments": 0,
+            "words": 0,
+            "doubtful": 0,
+            "to_review": 0,
+            "checked": 0,
+            "edits": 0,
+            "model": None,
+            "error": str(e),
+        }
 
 
 class RecordRequest(BaseModel):
@@ -260,8 +296,11 @@ def create_app(folder: Path, session: RecordingSession | None = None,
         wanted = " ".join(query_tokens(q))
         out = []
         for name in recordings(folder):
-            hits = find(cached(folder / f"{name}.json"), q)
-            s = summary(folder, name)
+            try:
+                hits = find(cached(folder / f"{name}.json"), q)
+                s = summary(folder, name)
+            except Exception:  # unloadable transcript: listed by list_recordings, not searchable
+                continue
             in_title = wanted in " ".join(fold(w) for w in s["title"].split())
             if hits or in_title:
                 out.append({**s, "count": len(hits), "hits": [asdict(h) for h in hits[:limit]]})
@@ -269,7 +308,7 @@ def create_app(folder: Path, session: RecordingSession | None = None,
 
     @app.get("/api/recordings")
     def list_recordings() -> list[dict]:
-        out = [summary(folder, n) for n in recordings(folder)]
+        out = [summary_or_broken(folder, n) for n in recordings(folder)]
         return sorted(out, key=lambda r: r["started_at"], reverse=True)
 
     @app.get("/api/recordings/{name}")
@@ -278,7 +317,9 @@ def create_app(folder: Path, session: RecordingSession | None = None,
         path = folder / f"{name}.json"
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
-            data["summary"] = summary(folder, name)
+            # Degraded summary when the transcript does not validate: the raw segments are
+            # still readable and the audio playable.
+            data["summary"] = summary_or_broken(folder, name)
             data["provisional"] = None
         elif preview := session.provisional(name):
             # Still being transcribed: the text so far, read-only (decision 0031). The edit
@@ -289,10 +330,13 @@ def create_app(folder: Path, session: RecordingSession | None = None,
             data["provisional"] = stage
         else:
             raise HTTPException(status_code=404, detail="no such recording")
-        t = Transcript.model_validate(data)
-        ids = sorted({sg.speaker for sg in t.segments if sg.speaker},
-                     key=lambda v: (v.split(":")[0], int(v.split(":")[1])))  # fmt: skip
-        data["voices"] = {v: speaker_name(t, v) for v in ids}
+        try:
+            t = Transcript.model_validate(data)
+            ids = sorted({sg.speaker for sg in t.segments if sg.speaker},
+                         key=lambda v: (v.split(":")[0], int(v.split(":")[1])))  # fmt: skip
+            data["voices"] = {v: speaker_name(t, v) for v in ids}
+        except ValidationError:  # a file that does not validate is still shown, without voices
+            data["voices"] = {}
         files = {c: p for c in CHANNELS if (p := channel_file(folder, name, c))}
         data["audio"] = {c: f"/audio/{name}/{c}" for c in files}
         # How loud each channel is: the player raises a quiet mic track to the others' level

@@ -154,6 +154,7 @@ function renderCalls() {
     if (g !== group) items.push(el("div", { class: "group" }, group = g));
     const title = el("span", { class: "title" }, c.title);
     const sub = el("span", { class: "sub" }, `${shortWhen(date)} · ${minutes(c.duration)}`,
+      c.error ? el("span", { class: "n" }, " · trascrizione illeggibile") :
       c.to_review ? el("span", { class: "n" }, ` · ${c.to_review} da rivedere`) : null);
     // The full title on hover: the row truncates it.
     const a = el("a", { class: "call", href: `#/rec/${enc(c.name)}`, title: c.title }, title, sub);

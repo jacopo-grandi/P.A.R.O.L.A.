@@ -79,4 +79,8 @@ def assign(t: Transcript, channel: str, turns: list[tuple[float, float, int]]) -
                     "text": " ".join(w.text for w in part), "words": part, "speaker": sid,
                 }))  # fmt: skip
                 start = k
+    # Splitting in place can leave a segment of another channel that starts inside the split
+    # one's span sitting after pieces that start later: Transcript wants start-sorted segments
+    # (stable: equal starts keep the channel order the caller chose).
+    out.sort(key=lambda s: s.start)
     return t.model_copy(update={"segments": out})
