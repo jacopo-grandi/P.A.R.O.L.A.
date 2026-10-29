@@ -312,6 +312,7 @@ let audioCtx = null; // Web Audio, created on the first boosted play (a user ges
 let words = [];      // flat list of {el, channel, start, end, doubtful, seg, k}
 let runs = [];       // doubtful runs still to review: {seg, start, end, t, channel}
 let current = null;  // word element being played
+let reviewFrom = null;  // where N continues from after a correction (Invio stays put)
 let target = null;   // word chosen by click or N/P, until playback reaches it
 let editing = null;  // {seg, start, end}
 let stopAt = null;   // {channel, t}: stop playback there (excerpt of a doubtful run)
@@ -497,7 +498,7 @@ function openEditor(seg, start, end, autoplay) {
   const text = rec.segments[seg].words.slice(start, end).map(w => w.text).join(" ");
   const input = el("input", { class: "edit", value: text, size: Math.max(6, text.length + 2),
                               "aria-label": "Correggi",
-                              title: "Invio: salva (senza modifiche conferma) · Esc: chiudi" });
+                              title: "Invio: salva e resta (senza modifiche conferma) · Esc: chiudi" });
   first.el.before(input);
   for (let k = start; k < end; k++) wordAt(seg, k).el.classList.add("editing");
   input.addEventListener("keydown", async e => {
@@ -509,7 +510,7 @@ function openEditor(seg, start, end, autoplay) {
       e.preventDefault();
       try {
         await render(await post("correct", { segment: seg, start, end, text: input.value }),
-                     { seg, start, auto: true });
+                     { seg, start });
       } catch (err) { toast(err.message); }
     } else if (e.key === " " && e.ctrlKey) { e.preventDefault(); playRun(seg, start, end); }
     else if (e.key === "Tab" && suggestions.length) {
@@ -560,7 +561,8 @@ function closeEditor() {
 }
 
 function nextRun(direction, from) {
-  const pos = from ?? (current ? (words.find(w => w.el === current) || {}).start ?? -1 : -1);
+  const here = current ? (words.find(w => w.el === current) || {}).start : undefined;
+  const pos = from ?? here ?? reviewFrom ?? -1;
   return pickRun(runs, direction, pos);
 }
 
@@ -623,6 +625,7 @@ async function render(data, after) {
   words = [];
   runs = [];
   current = null;
+  reviewFrom = null;  // set again below after a correction; a different call starts clean
   editing = null;
   view = {};
 
@@ -841,11 +844,10 @@ async function render(data, after) {
 
   if (after && after.seg !== undefined) {
     view.scroll.scrollTop = scrollY;
-    if (after.auto) {
-      const w = wordAt(after.seg, Math.min(after.start, rec.segments[after.seg].words.length - 1));
-      const r = nextRun(1, w ? w.start - 0.02 : undefined);
-      if (r) openEditor(r.seg, r.start, r.end, true);
-    }
+    // Correcting no longer advances by itself (the person could not stay on a word): N picks
+    // up from here, not from the top, even though the playhead element is gone with the render.
+    const w = wordAt(after.seg, Math.min(after.start, rec.segments[after.seg].words.length - 1));
+    if (w) reviewFrom = w.start - 0.02;
   } else if (after) view.scroll.scrollTop = scrollY;
 
   // Counts in the sidebar follow the edits.

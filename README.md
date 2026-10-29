@@ -160,7 +160,7 @@ content, or deletes (with undo). The others in a call (and everyone in an import
 click a label to name the voice, use the dot next to a turn's time to move it to another voice
 (Cmd-Z undoes it), or hide the voices with the people button. In a call, doubtful words are
 highlighted and a click on a word plays the audio from there; while it plays, the text follows the word being said (it waits a few seconds after you scroll), and a click on the timeline shows that point in the text; the menu next to the timeline sets the speed (0.75× to 2×). N opens the next doubtful word (it plays and becomes editable):
-Enter saves the correction (unchanged text confirms it) and moves on, Esc cancels, a double click
+Enter saves the correction (unchanged text confirms it) and stays put — N moves on, Esc cancels, a double click
 edits any word, Cmd-Z undoes. Every change is logged with the model's original text, which is also
 kept as `<name>.asr.json`. Export as txt, md, docx, json, or PDF through the browser's print.
 
