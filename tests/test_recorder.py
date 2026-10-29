@@ -334,3 +334,28 @@ def test_the_text_grows_while_whisper_works(tmp_path, monkeypatch):
     assert seen[:2] == [("partial", ["prima frase"]), ("partial", ["prima frase seconda frase"])]
     assert seen[-1][0] == "transcript"
     assert backend.on_segments is None  # unhooked when the channel is done
+
+
+@requires_ffmpeg
+def test_a_failing_preview_never_costs_the_transcript(tmp_path, monkeypatch, capsys):
+    """A 25-minute call once aborted mid-decode, its text lost, because one partial segment
+    list failed the sort validation inside the preview path: the preview is best effort."""
+    monkeypatch.setattr(recorder, "_speaker_models", lambda: False)
+    monkeypatch.setattr(recorder, "PARTIAL_EVERY", 0.0)
+    _write(tmp_path / "c.mixed.wav", "sine=frequency=440:duration=1")
+    rec = recorder.Recording("c", tmp_path, {"mixed": {"seconds": 1.0}})
+
+    class OutOfOrder(FakeBackend):
+        on_segments = None
+
+        def transcribe(self, wav_path, language=None):
+            done = [seg(0.94, 2, "prima"), seg(1, 2, "seconda")]
+            self.on_segments([done[1], done[0]])  # a 60 ms inversion, as on the real call
+            return ASRResult(segments=done, language="it")
+
+    seen = []
+    json_path, _ = recorder.transcribe_recording(rec, OutOfOrder(),
+                                                 preview=lambda s, t: seen.append(s))  # fmt: skip
+    assert json_path.exists()  # the call is saved despite the broken preview
+    assert "partial preview skipped" in capsys.readouterr().err
+    assert seen[-1] == "transcript"  # the previews after the decode still arrive

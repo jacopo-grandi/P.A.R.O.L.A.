@@ -84,6 +84,11 @@ def restore_times(segments: list[Segment], cuts) -> list[Segment]:
         # A segment can begin at the edge of a cut: its words carry the real times.
         start = timed[0].start if timed else back(seg.start)
         end = timed[-1].end if timed else back(seg.end)
+        if out:
+            # Word times jitter a few ms across segment boundaries, so a start taken from the
+            # first word can fall before the previous segment's. Clamped, as in convert_result:
+            # the decode order is the spoken order, and the words keep their real times.
+            start = max(start, out[-1].start)
         update = {"start": start, "end": max(end, start), "words": words}
         out.append(seg.model_copy(update=update))
     return out

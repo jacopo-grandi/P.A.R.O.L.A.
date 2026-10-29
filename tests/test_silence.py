@@ -57,3 +57,22 @@ def test_restored_segments_start_on_their_words():
     (back,) = restore_times([seg], cuts)
     assert (back.start, back.end) == (23.2, 24.0)  # not 2.9: the segment began on the cut
     assert [(w.start, w.end) for w in back.words] == [(23.2, 23.5), (23.6, 24.0)]
+
+
+def test_restored_segments_stay_in_decode_order():
+    """Word times jitter across segment boundaries (a lone "!" restored to 778.92, the next
+    segment's first word to 778.86 on a real call): a start taken from the first word must not
+    fall before the previous segment's, or the transcript fails validation and a whole call's
+    text is refused."""
+    from parola.asr.mlx_whisper_backend import restore_times
+    from parola.audio.silence import Cuts
+    from parola.schema import Segment, Word
+
+    cuts = Cuts(at=[3.0], shift=[20.0])
+    first = Segment(text="!", start=3.0, end=3.3, words=[Word(text="!", start=3.2, end=3.3)])
+    second = Segment(text="e poi", start=3.1, end=3.4,
+                     words=[Word(text="e", start=3.15, end=3.2),
+                            Word(text="poi", start=3.2, end=3.4)])  # fmt: skip
+    a, b = restore_times([first, second], cuts)
+    assert (a.start, b.start) == (23.2, 23.2)  # clamped to the decode order, not reordered
+    assert b.words[0].start == 23.15  # the words keep their real times

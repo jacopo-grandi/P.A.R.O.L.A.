@@ -351,12 +351,17 @@ def transcribe_recording(rec: Recording, backend: ASRBackend, language: str | No
             if preview is None or not segments or time.monotonic() - last < PARTIAL_EVERY:
                 return
             last = time.monotonic()
-            so_far = Transcript(metadata=Metadata(audio_file=path.name,
-                                                  duration=rec.capture[channel]["seconds"],
-                                                  created_at=datetime.now(UTC),
-                                                  parola_version=__version__),
-                                segments=segments)  # fmt: skip
-            preview("partial", provisional({**parts, channel: so_far}, audio_file, duration))
+            try:
+                so_far = Transcript(metadata=Metadata(audio_file=path.name,
+                                                      duration=rec.capture[channel]["seconds"],
+                                                      created_at=datetime.now(UTC),
+                                                      parola_version=__version__),
+                                    segments=segments)  # fmt: skip
+                preview("partial", provisional({**parts, channel: so_far}, audio_file, duration))
+            except Exception as e:
+                # A preview must never cost the transcript: a 25-minute call once aborted (and
+                # lost its text) because one partial list failed validation mid-decode.
+                print(f"warning: partial preview skipped ({e})", file=sys.stderr)
 
         report(0.0)
         if hasattr(engine, "on_progress"):
