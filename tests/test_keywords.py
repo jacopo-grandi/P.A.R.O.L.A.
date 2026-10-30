@@ -3,8 +3,14 @@
 from datetime import UTC, datetime
 from itertools import product
 
-from parola.keywords import key_phrases, suggest_title
+import pytest
+
+from parola.keywords import _nlp, key_phrases, suggest_title
 from parola.schema import Metadata, Segment, Transcript, Word
+
+# The Italian tagger is an optional, non-commercial install (pyproject group "titles"):
+# without it the grammar filter stays out of the way and its tests make no sense.
+needs_it_tagger = pytest.mark.skipif(_nlp("it") is None, reason="it_core_news_sm not installed")
 
 
 def call(*lines: str, doubtful: set[str] = frozenset(), lang: str = "it") -> Transcript:
@@ -199,3 +205,63 @@ def test_a_name_at_the_start_of_a_sentence_keeps_its_capital():
     # One "Giulia" away from the start of a sentence is enough to show it is a name.
     t = call("Giulia pota.", "la lavanda di Giulia.", "la lavanda.")
     assert "Giulia" in " ".join(texts(t))
+
+
+@needs_it_tagger
+def test_meeting_verbs_do_not_name_a_call():
+    """ "ti mando il documento": the sending is how the meeting runs, not its subject."""
+    t = call("ti mando il documento firmato", "ti mando il documento richiesto",
+             "domani ti mando il documento")  # fmt: skip
+    assert all("mando" not in p for p in texts(t))
+    assert any("documento" in p for p in texts(t))
+
+
+@needs_it_tagger
+def test_a_persons_name_alone_does_not_name_a_call():
+    """ "Maria" is no topic; "progetto di Maria" is one, the person only specifies it."""
+    t = call("il progetto di Maria procede", "Maria ha chiuso il progetto",
+             "parliamo del progetto di Maria")  # fmt: skip
+    got = texts(t)
+    assert "Maria" not in got
+    assert "progetto di Maria" in got
+
+
+@needs_it_tagger
+def test_a_place_is_not_a_person():
+    t = call("il viaggio in Etiopia comincia", "la carestia in Etiopia",
+             "la storia della Etiopia")  # fmt: skip
+    assert any("Etiopia" in p for p in texts(t))
+
+
+def test_a_bare_adjective_rides_its_noun_phrase_or_vanishes():
+    """A quality with nothing it qualifies ("the legal one", "la prossima volta") is no title
+    on its own: at most it carries its noun phrase up (the real en-002 case)."""
+    t = call("the legal one matters", "the legal one wins", "the legal reasoning convinces",
+             "the legal reasoning holds", lang="en")  # fmt: skip
+    got = texts(t)
+    assert "legal" not in got
+    assert any("legal reasoning" in p for p in got)
+
+
+@needs_it_tagger
+def test_a_bare_temporal_adjective_never_names_an_italian_call():
+    t = call("la prossima volta decidiamo il budget", "la prossima volta vediamo il budget",
+             "la prossima volta chiudiamo il budget")  # fmt: skip
+    assert "prossima" not in texts(t)
+    assert any("budget" in p for p in texts(t))
+
+
+@needs_it_tagger
+def test_un_attimo_is_flow_not_subject():
+    t = call("aspetta un attimo il documento", "un attimo e il documento arriva",
+             "un attimo ancora per il documento")  # fmt: skip
+    assert all("attimo" not in p for p in texts(t))
+
+
+def test_without_spacy_models_phrases_still_work(monkeypatch):
+    """A machine without the taggers falls back to the frequency filters alone."""
+    import parola.keywords as K
+
+    monkeypatch.setattr(K, "_nlp", lambda lang: None)
+    t = call("allora il vaso rialzato è pronto", "quindi il vaso rialzato di ottobre")
+    assert texts(t)[0] == "vaso rialzato"

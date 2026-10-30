@@ -22,6 +22,10 @@ dependencies = [
     # pulled in by sherpa-onnx itself.
     "sherpa-onnx>=1.13",
     "sherpa-onnx-core>=1.13",
+    # Part-of-speech filter for the suggested titles (decision 0054). Both MIT; the Italian
+    # tagger lives in the optional "titles" group, its license is non-commercial.
+    "spacy>=3.8.18",
+    "en-core-web-sm",
 ]
 
 [project.scripts]
@@ -38,6 +42,11 @@ dev = [
     "pre-commit>=3.7",
     "pytest>=8",
     "ruff>=0.6",
+]
+# The Italian tagger for the suggested titles: CC BY-NC-SA 3.0 (non-commercial), so asked at
+# install and never a default. Without it, Italian titles fall back to the frequency filters.
+titles = [
+    "it-core-news-sm",
 ]
 
 [build-system]
@@ -61,3 +70,7 @@ addopts = "-m 'not slow'"
 markers = [
     "slow: runs the real ASR model (downloads weights on first run); select with -m slow",
 ]
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+it-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl" }

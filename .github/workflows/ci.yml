@@ -17,7 +17,9 @@ jobs:
           enable-cache: true
       # Real audio fixtures are generated with ffmpeg; without it those tests would be skipped.
       - run: brew install ffmpeg
-      - run: uv sync --frozen
+      # The titles group holds the Italian tagger (CC BY-NC-SA): its tests skip without it,
+      # so CI installs it to run them. CI is not a commercial use of the model.
+      - run: uv sync --frozen --group titles
       - run: uv run --frozen ruff check .
       - run: uv run --frozen ruff format --check .
       - run: uv run --frozen pytest

@@ -108,6 +108,13 @@ step "Installing the Python packages (uv sync: about 1.3 GB, the first time)"
 uv sync --inexact  # adds what is missing, removes nothing (e.g. the optional baselines)
 ok "packages in .venv"
 
+# The Italian part-of-speech tagger makes the suggested titles cleaner, but its license is
+# non-commercial (CC BY-NC-SA 3.0), so it is asked, never assumed. Titles work without it.
+if ask "Install the Italian tagger for better suggested titles? (it_core_news_sm 13 MB, CC BY-NC-SA: non-commercial use only)"; then
+    uv sync --inexact --group titles
+    ok "Italian tagger in .venv"
+fi
+
 step "Building the capture helper and the app"
 uv run --no-sync python -c "from parola.capture.recorder import build_helper; print('    ok:', build_helper())"
 "$repo/app/build.sh" >/dev/null

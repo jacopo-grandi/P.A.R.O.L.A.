@@ -296,6 +296,26 @@ determiner (article, articulated preposition, demonstrative, possessive, quantif
 "the ripest tomato"), or if it is a name or an acronym, which go without one ("Portogallo",
 "DOP"). This keeps out discourse words such as "esatto" or "ciao" without listing them.
 
+### 2-bis. Grammar, where frequency cannot tell
+
+Frequency cannot separate the furniture of meetings from topics — measured on real calls, the
+bands overlap fully (*attimo* 4.62 vs *crescita* 4.89; *prossima* 4.92 vs *product* 4.95). Two
+small part-of-speech taggers close the gap, run locally once per call: spaCy `en_core_web_sm`
+(MIT, installed with the app) and `it_core_news_sm` (CC BY-NC-SA 3.0, **non-commercial**, so
+offered at install and never a default).
+
+- A phrase is dropped when a tagged word in it is not a noun, proper noun, adjective or
+  foreign word: the verbs of running a meeting (*mando*, *scrivo*) never title.
+- A phrase of adjectives alone (*prossima*) stays ranked — a longer phrase may replace it
+  (*legal* carries *legal reasoning* up) — but on its own never reaches the title.
+- A phrase that is nothing but a person's name (*Maria*) is dropped; a person may still
+  specify a topic (*progetto di Maria*).
+- Sentences mix the two languages, so a tagger only judges the words that are more its
+  language's than the other's (by Zipf): *kick off* in an Italian sentence keeps the benefit
+  of the doubt rather than taking a junk tag from the Italian model.
+
+Without the taggers the titles fall back to the frequency filters alone.
+
 ### 3. Score
 
 Singular and plural are counted together (a final vowel after a consonant, or a final *s*, is

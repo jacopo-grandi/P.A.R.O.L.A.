@@ -105,6 +105,7 @@ DISCOURSE = frozenset(
         """
 allora quindi cioè insomma diciamo praticamente tipo comunque appunto ecco boh beh vabbe
 vabbè magari forse ok okay va' be' mah uhm hmm basically literally anyway alright yeah oh
+attimo
 """
     )
 )
@@ -271,6 +272,84 @@ def _runs(
     return runs, langs, starts, free
 
 
+# Parts of speech a title can be made of: things and their qualities. Everything else -
+# verbs ("mando", "scrivo"), pronouns, temporal adverbs - is how the meeting is run, not
+# what it is about. X keeps foreign words, which the Italian model tags so ("workspace").
+TITLE_POS = frozenset({"NOUN", "PROPN", "ADJ", "X"})
+# Share of a word's occurrences tagged as a person for the word to count as one.
+PERSON_SHARE = 0.5
+
+
+@cache
+def _nlp(lang: str):
+    """The small spaCy pipeline for the language, or None where it is not installed: the
+    titles then fall back to the frequency filters alone."""
+    try:
+        import spacy
+
+        return spacy.load(
+            "it_core_news_sm" if lang != "en" else "en_core_web_sm",
+            disable=("parser", "lemmatizer"),
+        )
+    except Exception:
+        return None
+
+
+def _grammar(t: Transcript) -> tuple[dict[str, Counter], Counter, Counter]:
+    """Per folded word: its parts of speech across the call, how often it is part of a person's
+    name, and how often it is said at all - from the spaCy models (decision 0054). Empty where
+    a model is missing, and the filter stays out of the way."""
+    pos: dict[str, Counter] = {}
+    person: Counter[str] = Counter()
+    total: Counter[str] = Counter()
+    by_lang: dict[str, list[str]] = {}
+    for seg in t.segments:
+        by_lang.setdefault(seg.lang or "it", []).append(seg.text)
+    for lang, texts in by_lang.items():
+        nlp = _nlp(lang)
+        if nlp is None:
+            continue
+        other = "en" if lang != "en" else "it"
+        for doc in nlp.pipe(texts):
+            for tok in doc:
+                word = _key(tok.text)
+                if not word:
+                    continue
+                key = fold(word)
+                total[key] += 1
+                if tok.ent_type_ in ("PER", "PERSON"):
+                    person[key] += 1
+                # Calls mix the two languages in the same sentence: a tagger's part of speech
+                # only counts for the words that are more its language's than the other's
+                # ("tomato" or "kick off" in an Italian segment would get a junk tag from the
+                # Italian model). Names are language-free, so the person count stays.
+                if _zipf(word, lang) >= _zipf(word, other):
+                    pos.setdefault(key, Counter())[tok.pos_] += 1
+    return pos, person, total
+
+
+def _titleworthy(key: tuple[str, ...], pos: dict[str, Counter], person: Counter,
+                 total: Counter) -> bool:  # fmt: skip
+    """Every known content word a thing or a quality, and not a person's name alone. A word
+    the tagger never saw gets the benefit of the doubt, and a person may specify a topic
+    ("la lavanda di Giulia") without being one ("Maria", "Norma Mundi")."""
+    words = [w for w in key if w not in CONNECTORS]
+    for w in words:
+        if (counts := pos.get(w)) and counts.most_common(1)[0][0] not in TITLE_POS:
+            return False
+    return not all(total[w] and person[w] >= PERSON_SHARE * total[w] for w in words)
+
+
+def _bare_adjectives(key: tuple[str, ...], pos: dict[str, Counter]) -> bool:
+    """Qualities with nothing they qualify ("prossima", "closest"): they stay ranked, since a
+    longer phrase may replace them ("legal" carries "legal reasoning" up), but on their own
+    they never reach the title."""
+    words = [w for w in key if w not in CONNECTORS]
+    tags = [pos[w].most_common(1)[0][0] for w in words if w in pos]
+    # Only when every word is tagged: an untagged one ("mulching") may be the thing qualified.
+    return len(tags) == len(words) and all(t == "ADJ" for t in tags)
+
+
 def _spell(spellings: Counter, free: Counter) -> str:
     """The usual spelling: capitals for an acronym written so at least once (DOP), a capital
     initial for a name always written so where the sentence does not force it (Giulia), lowercase
@@ -351,6 +430,9 @@ def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
         return any(w[:1].isupper() for w in shown.split() if w not in CONNECTORS)
 
     counts = Counter({k: n for k, n in counts.items() if is_topic(k)})
+    pos, person, total = _grammar(t)
+    counts = Counter({k: n for k, n in counts.items() if _titleworthy(k, pos, person, total)})
+    bare = {k for k in counts if _bare_adjectives(k, pos)}
 
     def score(key: tuple[str, ...], n: int) -> float:
         # TF-IDF against the language: said often, made of words said often in this call and
@@ -377,6 +459,7 @@ def key_phrases(t: Transcript, limit: int = 10) -> list[Phrase]:
     return [
         Phrase(_show(seen[key].most_common(1)[0][0], spellings, free), n, float(score(key, n)))
         for key, n in chosen
+        if key not in bare
     ]
 
 
